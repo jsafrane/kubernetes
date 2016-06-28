@@ -137,20 +137,19 @@ The alpha functionality for dynamic provisioning works as follows:
 
 1.  A cluster has only a single provisioner at a time, dictated by the cloud
     provider
-2.  When a new claim is submitted, the controller attempts to find an existing
-    volume that will fulfill the claim.  If a suitable volume is found, the
-    controller binds the claim and volume together and carries on normally.
-3.  If no volume is found for the claim, and the claim has the annotation
-    `volume.alpha.kubernetes.io/storage-class`, the provisioner is invoked
-    to provision a volume to fill that claim
-4.  All provisioners are in-tree; they implement an interface called
+2.  When a new claim is submitted, the controller checks for annotation
+    `volume.alpha.kubernetes.io/storage-class`. If present in the claim, the
+    provisioner is invoked to provision a volume to fill that claim regardless
+    whether there is already existing volume that could satisfy the claim
+    without provisioning
+3.  All provisioners are in-tree; they implement an interface called
     `ProvisionableVolumePlugin` which has a method, `NewProvisioner()`,
     that returns a new `Provisioner` instance
-5.  The controller calls the provisioner's `Provision()` method; `Provision`
+4.  The controller calls the provisioner's `Provision()` method; `Provision`
     is responsible for provisioning the volume in the cloud provider and
     returns an `api.PersistentVolume` and an error
-6.  If `Provision` returns an error, the controller stops trying to provision
-7.  If `Provision` returns no error, the controller creates the returned
+5.  If `Provision` returns an error, the controller stops trying to provision
+6.  If `Provision` returns no error, the controller creates the returned
     `api.PersistentVolume`, already bound to the claim
   1.  If the create operation fails, it is retried
   2.  If the create operation never succeeds, the controller attempts to delete
@@ -161,7 +160,8 @@ The alpha functionality for dynamic provisioning works as follows:
 It is sensible to provision volumes only when an existing volume cannot
 satisfy a claim.  This ensures that existing, already allocated resources are
 used before additional resources are allocated.  In this regard, the existing
-logic need not change much when storage classes are added.  The primary
+logic need to be changed to look for available volume first and to provision
+a new volume only if no available matches the claim. The primary
 difference is that in the existing design, there is no way to parameterize
 provisioners or have more than one provisioner per cluster.  Therefore, once
 we know that we have to provision a volume to satisfy a claim, we need to
@@ -186,10 +186,15 @@ storage classes that match that claim's selector, find a storage class to
 provision a volume for the claim with_.  Initially, we will implement the
 following behavior for this black box:
 
-1.  If multiple storage classes match the claim's selector, choose one at
-    random
-2.  If no storage class matches the claim's selector, use a default
-    class, which is specified as an argument to the controller manager
+1.  Allow cluster administrator to specify a default storage class
+2.  If multiple storage classes match the claim's selector and the default one
+    is among them, use the default one. This allows claims without any selector
+    to be provisioned by the default storage class
+3.  If multiple storage classes match the claim's selector and the default one
+    is **not** among them, choose a storage class at random
+2.  If no storage class matches the claim's selector, no volume is provisioned
+    and the claim remains in `Pending` phase until a new matching storage class
+    or avaliable volume appears.
 
 ### Controller workflow for provisioning volumes
 
@@ -201,22 +206,24 @@ classes.  The new workflow will be:
     controller binds the claim and volume together and carries on normally.
 2.  If no volume is found for the claim, the controller will attempt to
     determine a storage class for the volume
-3.  If no storage class is found, the controller eventually retries finding
-    a storage class
+3.  If no storage class is found, the controller goes back to step 1. and
+    periodically retries finding a matching volume or storage class again
+    until a match is found. The claim is `Pending` during this period
 4.  All provisioners are in-tree; they implement an interface called
     `ProvisionableVolumePlugin`, which has a method called `NewProvisioner`
     that returns a new provisioner.
 5.  The provisioner's `Provision` method has the same responsibility as it
     does now, but it is now passed both the claim and storage class as
     parameters
-6.  If `Provision` returns an error, the controller stops trying to
-    provision
+6.  If `Provision` returns an error, the controller goes back to step 1., i.e.
+    it will retry provisioning periodically
 7.  If `Provision` returns no error, the controller creates the returned
     `api.PersistentVolume`, already bound to the claim
   1.  If the create operation for the `api.PersistentVolume` fails, it is
       retried
-  2.  If the create operation never succeeds, the controller attempts to
-      delete the provisioned volume and creates an event on the claim
+  2.  If the create operation does not succeed in reasonable time, the
+      controller attempts to delete the provisioned volume and creates an event
+      on the claim
 
 ## Proposed Design
 
@@ -302,13 +309,87 @@ new interface and become sensitive to parameters of storage classes.
 The persistent volume controller will be modified to implement the new
 workflow described in this proposal.  The changes will be limited to the
 `provisionClaimOperation` method, which is responsible for invoking the
-provisioner.
+provisioner, and to favor existing volumes before provisioning a new one.
 
 ## Examples
 
 Let's take a look at a few examples:
 
+### AWS provisioners with distinct QoS and zones
 
+This example shows four storage classes with "fast" and "slow" drives and
+availability zones "zone1" and "zone2".
+
+```
+apiVersion: v1
+kind: StorageClass
+metadata:
+  name: aws-fast-zone1
+  labels:
+    speed: fast
+    zone: zone1
+provisionerType: kubernetes.io/aws-ebs
+provisionerParameters: "type=gp2&zone=us-east-1a"
+
+apiVersion: v1
+kind: StorageClass
+metadata:
+  name: aws-fast-zone2
+  labels:
+    speed: fast
+    zone: zone2
+provisionerType: kubernetes.io/aws-ebs
+provisionerParameters: "type=gp2&zone=us-east-1b"
+
+apiVersion: v1
+kind: StorageClass
+metadata:
+  name: aws-slow-zone1
+  labels:
+    speed: slow
+    zone: zone1
+provisionerType: kubernetes.io/aws-ebs
+provisionerParameters: "type=sc1&zone=us-east-1a"
+
+apiVersion: v1
+kind: StorageClass
+metadata:
+  name: aws-slow-zone2
+  labels:
+    speed: slow
+    zone: zone2
+provisionerType: kubernetes.io/aws-ebs
+provisionerParameters: "type=sc1&zone=us-east-1b"
+```
+
+Kubernetes have been configured to use `aws-slow-zone1` as default:
+
+```
+kube-controller-manager --default-storage-class="aws-slow-zone1"
+```
+
+Assuming that there are no volumes available for binding, following claims are
+evaluated:
+
+* PVC with no `Selector`. All storage classes are matching this empty selector
+  and `aws-slow-zone1` is used as it is the default one. The controller finds
+  a provisioner that is responsible for provisioning `kubernetes.io/aws-ebs`
+  volume type and invokes its `Provision` method, passing parameters
+  `type=sc1&zone=us-east-1a` as opaque string. It's up to the provisioner
+  to parse these values and provision appropriate volume or return an error.
+  Any error is sent as event on the PVC so user can see what's going on.
+
+* PVC with `Selector: MatchLables: zone=zone1`, i.e. requesting anything in
+  `zone1`. Both `aws-slow-zone1` and `aws-fast-zone1` match. `aws-slow-zone1`
+  is chosen as it is the default one.
+
+* PVC with `Selector: MatchLables: zone=zone2`, i.e. requesting anything in
+  `zone2`. Both `aws-slow-zone2` and `aws-fast-zone2` match and the controller
+  **chooses one randomly**, as the default one is not among these.
+
+* PVC with `Selector: MatchLables: zone=zone3`, i.e. requesting anything in
+  `zone3`. No storage class matches and the PVC is `Pending` until someone
+  creates a storage class with label `zone=zone3`.
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/docs/proposals/volume-provisioning.md?pixel)]()
