@@ -913,7 +913,7 @@ type StorageClass struct {
 	api.ObjectMeta       `json:"metadata,omitempty"`
 
 	// ProvisionerType indicates the type of the provisioner.
-	ProvisionerType string `json:"provisionerType,omitempty"`
+	ProvisionerType string `json:"provisionerType"`
 
 	// ProvisionerParameters holds the parameters for the provisioner that should
 	// create volumes of this storage class.

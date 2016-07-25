@@ -763,6 +763,10 @@ func ValidateStorageClassUpdate(storageClass, oldStorageClass *extensions.Storag
 // validateProvisionerType tests if provisionerType is a valid qualified name.
 func validateProvisionerType(provisionerType string, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
+	if len(provisionerType) == 0 {
+		allErrs = append(allErrs, field.Required(fldPath, provisionerType))
+
+	}
 	if len(provisionerType) > 0 {
 		for _, msg := range validation.IsQualifiedName(strings.ToLower(provisionerType)) {
 			allErrs = append(allErrs, field.Invalid(fldPath, provisionerType, msg))

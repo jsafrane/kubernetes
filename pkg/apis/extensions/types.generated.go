@@ -15526,7 +15526,6 @@ func (x *StorageClass) CodecEncodeSelf(e *codec1978.Encoder) {
 			_, _, _ = yysep2, yyq2, yy2arr2
 			const yyr2 bool = false
 			yyq2[0] = true
-			yyq2[1] = x.ProvisionerType != ""
 			yyq2[2] = len(x.ProvisionerParameters) != 0
 			yyq2[3] = x.Kind != ""
 			yyq2[4] = x.APIVersion != ""
@@ -15534,7 +15533,7 @@ func (x *StorageClass) CodecEncodeSelf(e *codec1978.Encoder) {
 			if yyr2 || yy2arr2 {
 				r.EncodeArrayStart(5)
 			} else {
-				yynn2 = 0
+				yynn2 = 1
 				for _, b := range yyq2 {
 					if b {
 						yynn2++
@@ -15562,27 +15561,21 @@ func (x *StorageClass) CodecEncodeSelf(e *codec1978.Encoder) {
 			}
 			if yyr2 || yy2arr2 {
 				z.EncSendContainerState(codecSelfer_containerArrayElem1234)
-				if yyq2[1] {
-					yym9 := z.EncBinary()
-					_ = yym9
-					if false {
-					} else {
-						r.EncodeString(codecSelferC_UTF81234, string(x.ProvisionerType))
-					}
+				yym9 := z.EncBinary()
+				_ = yym9
+				if false {
 				} else {
-					r.EncodeString(codecSelferC_UTF81234, "")
+					r.EncodeString(codecSelferC_UTF81234, string(x.ProvisionerType))
 				}
 			} else {
-				if yyq2[1] {
-					z.EncSendContainerState(codecSelfer_containerMapKey1234)
-					r.EncodeString(codecSelferC_UTF81234, string("provisionerType"))
-					z.EncSendContainerState(codecSelfer_containerMapValue1234)
-					yym10 := z.EncBinary()
-					_ = yym10
-					if false {
-					} else {
-						r.EncodeString(codecSelferC_UTF81234, string(x.ProvisionerType))
-					}
+				z.EncSendContainerState(codecSelfer_containerMapKey1234)
+				r.EncodeString(codecSelferC_UTF81234, string("provisionerType"))
+				z.EncSendContainerState(codecSelfer_containerMapValue1234)
+				yym10 := z.EncBinary()
+				_ = yym10
+				if false {
+				} else {
+					r.EncodeString(codecSelferC_UTF81234, string(x.ProvisionerType))
 				}
 			}
 			if yyr2 || yy2arr2 {
