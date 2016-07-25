@@ -1935,13 +1935,13 @@ func TestValidateStorageClass(t *testing.T) {
 		{
 			// Empty type and parameters
 			ObjectMeta:            api.ObjectMeta{Name: "foo"},
-			ProvisionerType:       "",
+			ProvisionerType:       "kubernetes.io/foo-provisioner",
 			ProvisionerParameters: map[string]string{},
 		},
 		{
 			// nil parameters
 			ObjectMeta:      api.ObjectMeta{Name: "foo"},
-			ProvisionerType: "",
+			ProvisionerType: "kubernetes.io/foo-provisioner",
 		},
 		{
 			// some parameters
@@ -1987,6 +1987,10 @@ func TestValidateStorageClass(t *testing.T) {
 			ProvisionerParameters: map[string]string{
 				"invalid/parameter/name": "value",
 			},
+		},
+		"provisionerType: Required value": {
+			ObjectMeta:      api.ObjectMeta{Name: "foo"},
+			ProvisionerType: "",
 		},
 		"too long parameters": {
 			ObjectMeta:            api.ObjectMeta{Name: "foo"},
