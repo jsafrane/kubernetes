@@ -395,8 +395,10 @@ func StartControllers(s *options.CMServer, kubeClient *client.Client, kubeconfig
 		ProbeControllerVolumePlugins(cloud, s.VolumeConfiguration),
 		cloud,
 		s.ClusterName,
+		// volumeSource, claimSource, classSource, eventRecorder
 		nil, nil, nil, nil,
 		s.VolumeConfiguration.EnableDynamicProvisioning,
+		// deault storageClass
 		"",
 	)
 	volumeController.Run()

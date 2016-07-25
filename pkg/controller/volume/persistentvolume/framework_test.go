@@ -869,12 +869,13 @@ func runSyncTests(t *testing.T, tests []controllerTest, storageClasses []*extens
 			reactor.volumes[volume.Name] = volume
 		}
 
-		// Convert classes to []interface{} and forcefuly inject them to the
+		// Convert classes to []interface{} and forcefully inject them into
 		// controller.
 		storageClassPtrs := make([]interface{}, len(storageClasses))
 		for i, s := range storageClasses {
 			storageClassPtrs[i] = s
 		}
+		// 1 is the resource version
 		ctrl.classes.Replace(storageClassPtrs, "1")
 
 		// Run the tested functions
@@ -912,7 +913,7 @@ func runMultisyncTests(t *testing.T, tests []controllerTest, storageClasses []*e
 		client := &fake.Clientset{}
 		ctrl := newTestController(client, nil, nil, nil, true, defaultStorageClass)
 
-		// Convert classes to []interface{} and forcefuly inject them to the
+		// Convert classes to []interface{}  and forcefully inject them into
 		// controller.
 		storageClassPtrs := make([]interface{}, len(storageClasses))
 		for i, s := range storageClasses {

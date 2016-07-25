@@ -2268,7 +2268,7 @@ func (gce *GCECloud) encodeDiskTags(tags map[string]string) (string, error) {
 }
 
 // CreateDisk creates a new Persistent Disk, with the specified name & size, in
-// the specified zone. It stores specified tags endoced in JSON in Description
+// the specified zone. It stores specified tags encoded in JSON in Description
 // field.
 func (gce *GCECloud) CreateDisk(name string, diskType string, zone string, sizeGb int64, tags map[string]string) error {
 	tagsStr, err := gce.encodeDiskTags(tags)

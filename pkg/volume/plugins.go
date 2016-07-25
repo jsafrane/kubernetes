@@ -289,7 +289,7 @@ type VolumeConfig struct {
 	// plugin itself.
 	OtherAttributes map[string]string
 
-	// ProvosioningEnabled configures whether provisioning of this plugin is
+	// ProvisioningEnabled configures whether provisioning of this plugin is
 	// enabled or not. Currently used only in host_path plugin.
 	ProvisioningEnabled bool
 }
@@ -428,6 +428,8 @@ func (pm *VolumePluginMgr) FindRecyclablePluginBySpec(spec *Spec) (RecyclableVol
 	return nil, fmt.Errorf("no recyclable volume plugin matched")
 }
 
+// FindProvisionablePluginByName fetches  a persistent volume plugin by name.  If
+// no plugin is found, returns error.
 func (pm *VolumePluginMgr) FindProvisionablePluginByName(name string) (ProvisionableVolumePlugin, error) {
 	volumePlugin, err := pm.FindPluginByName(name)
 	if err != nil {
@@ -436,7 +438,7 @@ func (pm *VolumePluginMgr) FindProvisionablePluginByName(name string) (Provision
 	if provisionableVolumePlugin, ok := volumePlugin.(ProvisionableVolumePlugin); ok {
 		return provisionableVolumePlugin, nil
 	}
-	return nil, fmt.Errorf("no recyclable volume plugin matched")
+	return nil, fmt.Errorf("no provisionable volume plugin matched")
 }
 
 // FindDeletablePluginBySppec fetches a persistent volume plugin by spec.  If

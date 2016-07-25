@@ -73,7 +73,7 @@ const annBindCompleted = "pv.kubernetes.io/bind-completed"
 // pre-bound). Value of this annotation does not matter.
 const annBoundByController = "pv.kubernetes.io/bound-by-controller"
 
-// annClass annotation represents a new field:
+// annClass annotation represents the storage class associated with a resource:
 // - in PersistentVolumeClaim it represents required class to match.
 //   Only PersistentVolumes with the same class (i.e. annotation with the same
 //   value) can be bound to the claim. In case no such volume exists, the
@@ -1169,8 +1169,6 @@ func (ctrl *PersistentVolumeController) provisionClaimOperation(claimObj interfa
 	// Bind it to the claim
 	volume.Spec.ClaimRef = claimRef
 	volume.Status.Phase = api.VolumeBound
-
-	// TODO: copy all labels from StorageClass to the created volume?
 
 	// Add annBoundByController (used in deleting the volume)
 	setAnnotation(&volume.ObjectMeta, annBoundByController, "yes")

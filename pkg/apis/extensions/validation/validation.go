@@ -760,8 +760,8 @@ func ValidateStorageClassUpdate(storageClass, oldStorageClass *extensions.Storag
 	return allErrs
 }
 
+// validateProvisionerType tests if provisionerType is a valid qualified name.
 func validateProvisionerType(provisionerType string, fldPath *field.Path) field.ErrorList {
-	// provisionerType must be a valid qualified name
 	allErrs := field.ErrorList{}
 	if len(provisionerType) > 0 {
 		for _, msg := range validation.IsQualifiedName(strings.ToLower(provisionerType)) {
@@ -772,9 +772,8 @@ func validateProvisionerType(provisionerType string, fldPath *field.Path) field.
 }
 
 const maxProvisionerParameterSize = 256 * (1 << 10) // 256 kB
+// validateProvisionerParameters tests that keys are qualified names and that provisionerParameter are < 256kB.
 func validateProvisionerParameters(params map[string]string, fldPath *field.Path) field.ErrorList {
-	// provisionerParameter keys must be valid qualified names
-	// provisionerParameter must be smaller than 256 kB
 	var totalSize int64
 	allErrs := field.ErrorList{}
 

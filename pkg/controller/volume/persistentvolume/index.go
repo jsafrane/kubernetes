@@ -18,14 +18,11 @@ package persistentvolume
 
 import (
 	"fmt"
-	"sort"
-
-	"github.com/golang/glog"
-
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/labels"
+	"sort"
 )
 
 // persistentVolumeOrderedIndex is a cache.Store that keeps persistent volumes
@@ -135,7 +132,6 @@ func (pvIndex *persistentVolumeOrderedIndex) findByClaim(claim *api.PersistentVo
 				continue
 			}
 			claimClass := getClaimClass(claim)
-			glog.V(1).Infof("JSAF: inspecting %s: wants %q, got %q", volume.Name, claimClass, getVolumeClass(volume))
 			if claimClass != "" && claimClass != getVolumeClass(volume) {
 				continue
 			}

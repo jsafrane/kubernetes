@@ -95,7 +95,6 @@ func (gceutil *GCEDiskUtil) CreateVolume(c *gcePersistentDiskProvisioner) (strin
 		}
 	}
 
-	// TODO: implement c.options.ProvisionerSelector parsing
 	if c.options.ProvisionerSelector != nil {
 		return "", 0, nil, fmt.Errorf("claim.Spec.Selector is not supported for dynamic provisioning on GCE")
 	}
