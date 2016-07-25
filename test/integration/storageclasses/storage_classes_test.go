@@ -18,7 +18,7 @@ limitations under the License.
 
 package storageclasses
 
-// This file tests use of the storage classes API resource.
+// This file contains tests for the storage classes API resource.
 
 import (
 	"testing"
@@ -48,7 +48,7 @@ func TestStorageClasses(t *testing.T) {
 	DoTestStorageClasses(t, client, ns)
 }
 
-// DoTestStorageClasses test storage classes for one api version.
+// DoTestStorageClasses tests storage classes for one api version.
 func DoTestStorageClasses(t *testing.T, client *client.Client, ns *api.Namespace) {
 	// Make a storage class object.
 	s := extensions.StorageClass{
