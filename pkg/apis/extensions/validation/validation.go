@@ -751,12 +751,16 @@ func ValidateStorageClass(storageClass *extensions.StorageClass) field.ErrorList
 	return allErrs
 }
 
-// ValidateStorageClassUpdate tests if required fields in the StorageClass are set.
+// ValidateStorageClassUpdate tests if an update to StorageClass is valid.
 func ValidateStorageClassUpdate(storageClass, oldStorageClass *extensions.StorageClass) field.ErrorList {
 	allErrs := apivalidation.ValidateObjectMetaUpdate(&storageClass.ObjectMeta, &oldStorageClass.ObjectMeta, field.NewPath("metadata"))
-	allErrs = append(allErrs, validateProvisioner(storageClass.Provisioner, field.NewPath("provisioner"))...)
-	allErrs = append(allErrs, validateProvisionerParameters(storageClass.ProvisionerParameters, field.NewPath("provisionerParameters"))...)
+	if !reflect.DeepEqual(oldStorageClass.ProvisionerParameters, storageClass.ProvisionerParameters) {
+		allErrs = append(allErrs, field.Forbidden(field.NewPath("provisionerParameters"), "updates to provisionerParameters are forbidden."))
+	}
 
+	if strings.Compare(storageClass.Provisioner, oldStorageClass.Provisioner)!=0{
+		allErrs = append(allErrs, field.Forbidden(field.NewPath("provisioner"), "updates to provisioner are forbidden."))
+	}
 	return allErrs
 }
 
@@ -776,15 +780,25 @@ func validateProvisioner(provisioner string, fldPath *field.Path) field.ErrorLis
 }
 
 const maxProvisionerParameterSize = 256 * (1 << 10) // 256 kB
+const maxProvisionerParameterLen = 512 // 256 kB
 // validateProvisionerParameters tests that keys are qualified names and that provisionerParameter are < 256kB.
 func validateProvisionerParameters(params map[string]string, fldPath *field.Path) field.ErrorList {
 	var totalSize int64
 	allErrs := field.ErrorList{}
 
+	if len(params) > maxProvisionerParameterLen {
+		allErrs = append(allErrs, field.TooLong(fldPath, "Provisioner Parameters exceeded max allowed", maxProvisionerParameterLen))
+		return allErrs
+	}
+
 	for k, v := range params {
-		for _, msg := range validation.IsQualifiedName(strings.ToLower(k)) {
-			allErrs = append(allErrs, field.Invalid(fldPath, k, msg))
+		if len(k) < 1 {
+			allErrs = append(allErrs, field.Invalid(fldPath, k, "field can not be empty."))
 		}
+		if len(v) < 1 {
+			allErrs = append(allErrs, field.Required(fldPath, v))
+		}
+
 		totalSize += (int64)(len(k)) + (int64)(len(v))
 	}
 

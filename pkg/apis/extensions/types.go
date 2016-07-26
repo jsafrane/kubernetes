@@ -913,7 +913,7 @@ type StorageClass struct {
 	unversioned.TypeMeta `json:",inline"`
 	api.ObjectMeta       `json:"metadata,omitempty"`
 
-	// provisioner which driver is expected to handle this StorageClass.
+	// provisioner is the driver expected to handle this StorageClass.
 	// This is an optionally-prefixed name, like a label key.
 	// For example: "kubernetes.io/gce-pd" or "kubernetes.io/aws-ebs".
 	// This value may not be empty.
@@ -922,7 +922,8 @@ type StorageClass struct {
 	// provisionerParameters holds parameters for the provisioner.
 	// These values are opaque to the  system and are passed directly
 	// to the provisioner.  The only validation done on keys or values
-	// is that they are not empty.
+	// is that they are not empty.  The maximum number of parameters is
+	// 512, with a cumulative max size of 256K
 	ProvisionerParameters map[string]string `json:"provisionerParameters,omitempty"`
 }
 

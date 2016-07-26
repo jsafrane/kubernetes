@@ -1981,11 +1981,18 @@ func TestValidateStorageClass(t *testing.T) {
 			ObjectMeta:  api.ObjectMeta{Name: "foo"},
 			Provisioner: "kubernetes.io/invalid/provisioner",
 		},
-		"invalid parameter name": {
+		"invalid empty parameter name": {
 			ObjectMeta:  api.ObjectMeta{Name: "foo"},
 			Provisioner: "kubernetes.io/foo",
 			ProvisionerParameters: map[string]string{
-				"invalid/parameter/name": "value",
+				"": "value",
+			},
+		},
+		"invalid empty parameter value": {
+			ObjectMeta:  api.ObjectMeta{Name: "foo"},
+			Provisioner: "kubernetes.io/foo",
+			ProvisionerParameters: map[string]string{
+				"foo": "",
 			},
 		},
 		"provisioner: Required value": {

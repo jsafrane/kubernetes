@@ -674,7 +674,7 @@ func TestPersistentVolumeProvisionMultiPVCs(t *testing.T) {
 	for i := 0; i < objCount; i++ {
 		pvc := createPVC("pvc-provision-"+strconv.Itoa(i), ns.Name, "1G", []api.PersistentVolumeAccessMode{api.ReadWriteOnce})
 		pvc.Annotations = map[string]string{
-			"volume.alpha.kubernetes.io/storage-class": "gold",
+			"volume.beta.kubernetes.io/storage-class": "gold",
 		}
 		pvcs[i] = pvc
 	}

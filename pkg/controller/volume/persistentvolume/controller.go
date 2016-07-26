@@ -81,7 +81,11 @@ const annBoundByController = "pv.kubernetes.io/bound-by-controller"
 //   the same name as the annotation value.
 // - in PersistentVolume it represents storage class to which the persistent
 //   volume belongs.
-const annClass = "volume.alpha.kubernetes.io/storage-class"
+const annClass = "volume.beta.kubernetes.io/storage-class"
+
+// alphaAnnClass annotation represents the previous alpha storage class
+// annotation.  it's no longer used and held here for posterity.
+const alphaAnnClass = "volume.alpha.kubernetes.io/storage-class"
 
 // This annotation is added to a PV that has been dynamically provisioned by
 // Kubernetes. Its value is name of volume plugin that created the volume.

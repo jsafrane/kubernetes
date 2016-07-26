@@ -72,7 +72,7 @@ func DoTestStorageClasses(t *testing.T, client *client.Client, ns *api.Namespace
 			Name:      "XXX",
 			Namespace: ns.Name,
 			Annotations: map[string]string{
-				"volume.alpha.kubernetes.io/storage-class": "gold",
+				"volume.beta.kubernetes.io/storage-class": "gold",
 			},
 		},
 		Spec: api.PersistentVolumeClaimSpec{

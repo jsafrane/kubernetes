@@ -137,7 +137,7 @@ func createClaim(ns string) *api.PersistentVolumeClaim {
 			GenerateName: "pvc-",
 			Namespace:    ns,
 			Annotations: map[string]string{
-				"volume.alpha.kubernetes.io/storage-class": "fast",
+				"volume.beta.kubernetes.io/storage-class": "fast",
 			},
 		},
 		Spec: api.PersistentVolumeClaimSpec{
