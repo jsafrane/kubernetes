@@ -2427,7 +2427,7 @@ func autoConvert_v1beta1_StorageClass_To_extensions_StorageClass(in *StorageClas
 		return err
 	}
 	out.Provisioner = in.Provisioner
-	out.ProvisionerParameters = in.ProvisionerParameters
+	out.Parameters = in.Parameters
 	return nil
 }
 
@@ -2444,7 +2444,7 @@ func autoConvert_extensions_StorageClass_To_v1beta1_StorageClass(in *extensions.
 		return err
 	}
 	out.Provisioner = in.Provisioner
-	out.ProvisionerParameters = in.ProvisionerParameters
+	out.Parameters = in.Parameters
 	return nil
 }
 

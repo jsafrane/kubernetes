@@ -1934,9 +1934,9 @@ func TestValidateStorageClass(t *testing.T) {
 	successCases := []extensions.StorageClass{
 		{
 			// Empty type and parameters
-			ObjectMeta:            api.ObjectMeta{Name: "foo"},
-			Provisioner:           "kubernetes.io/foo-provisioner",
-			ProvisionerParameters: map[string]string{},
+			ObjectMeta:  api.ObjectMeta{Name: "foo"},
+			Provisioner: "kubernetes.io/foo-provisioner",
+			Parameters:  map[string]string{},
 		},
 		{
 			// nil parameters
@@ -1947,7 +1947,7 @@ func TestValidateStorageClass(t *testing.T) {
 			// some parameters
 			ObjectMeta:  api.ObjectMeta{Name: "foo"},
 			Provisioner: "kubernetes.io/foo-provisioner",
-			ProvisionerParameters: map[string]string{
+			Parameters: map[string]string{
 				"kubernetes.io/foo-parameter": "free/form/string",
 				"foo-parameter":               "free-form-string",
 				"foo-parameter2":              "{\"embedded\": \"json\", \"with\": {\"structures\":\"inside\"}}",
@@ -1984,15 +1984,8 @@ func TestValidateStorageClass(t *testing.T) {
 		"invalid empty parameter name": {
 			ObjectMeta:  api.ObjectMeta{Name: "foo"},
 			Provisioner: "kubernetes.io/foo",
-			ProvisionerParameters: map[string]string{
+			Parameters: map[string]string{
 				"": "value",
-			},
-		},
-		"invalid empty parameter value": {
-			ObjectMeta:  api.ObjectMeta{Name: "foo"},
-			Provisioner: "kubernetes.io/foo",
-			ProvisionerParameters: map[string]string{
-				"foo": "",
 			},
 		},
 		"provisioner: Required value": {
@@ -2000,9 +1993,9 @@ func TestValidateStorageClass(t *testing.T) {
 			Provisioner: "",
 		},
 		"too long parameters": {
-			ObjectMeta:            api.ObjectMeta{Name: "foo"},
-			Provisioner:           "kubernetes.io/foo",
-			ProvisionerParameters: longParameters,
+			ObjectMeta:  api.ObjectMeta{Name: "foo"},
+			Provisioner: "kubernetes.io/foo",
+			Parameters:  longParameters,
 		},
 	}
 

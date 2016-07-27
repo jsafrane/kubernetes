@@ -919,12 +919,12 @@ type StorageClass struct {
 	// This value may not be empty.
 	Provisioner string `json:"provisioner"`
 
-	// provisionerParameters holds parameters for the provisioner.
+	// parameters holds parameters for the provisioner.
 	// These values are opaque to the  system and are passed directly
-	// to the provisioner.  The only validation done on keys or values
-	// is that they are not empty.  The maximum number of parameters is
+	// to the provisioner.  The only validation done on keys is that they are
+	// not empty.  The maximum number of parameters is
 	// 512, with a cumulative max size of 256K
-	ProvisionerParameters map[string]string `json:"provisionerParameters,omitempty"`
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 // StorageClassList is a collection of storage classes.

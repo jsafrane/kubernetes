@@ -2867,11 +2867,11 @@ func (m *StorageClass) MarshalTo(data []byte) (int, error) {
 	i++
 	i = encodeVarintGenerated(data, i, uint64(len(m.Provisioner)))
 	i += copy(data[i:], m.Provisioner)
-	if len(m.ProvisionerParameters) > 0 {
-		for k := range m.ProvisionerParameters {
+	if len(m.Parameters) > 0 {
+		for k := range m.Parameters {
 			data[i] = 0x1a
 			i++
-			v := m.ProvisionerParameters[k]
+			v := m.Parameters[k]
 			mapSize := 1 + len(k) + sovGenerated(uint64(len(k))) + 1 + len(v) + sovGenerated(uint64(len(v)))
 			i = encodeVarintGenerated(data, i, uint64(mapSize))
 			data[i] = 0xa
@@ -4035,8 +4035,8 @@ func (m *StorageClass) Size() (n int) {
 	n += 1 + l + sovGenerated(uint64(l))
 	l = len(m.Provisioner)
 	n += 1 + l + sovGenerated(uint64(l))
-	if len(m.ProvisionerParameters) > 0 {
-		for k, v := range m.ProvisionerParameters {
+	if len(m.Parameters) > 0 {
+		for k, v := range m.Parameters {
 			_ = k
 			_ = v
 			mapEntrySize := 1 + len(k) + sovGenerated(uint64(len(k))) + 1 + len(v) + sovGenerated(uint64(len(v)))
@@ -4928,20 +4928,20 @@ func (this *StorageClass) String() string {
 	if this == nil {
 		return "nil"
 	}
-	keysForProvisionerParameters := make([]string, 0, len(this.ProvisionerParameters))
-	for k := range this.ProvisionerParameters {
-		keysForProvisionerParameters = append(keysForProvisionerParameters, k)
+	keysForParameters := make([]string, 0, len(this.Parameters))
+	for k := range this.Parameters {
+		keysForParameters = append(keysForParameters, k)
 	}
-	github_com_gogo_protobuf_sortkeys.Strings(keysForProvisionerParameters)
-	mapStringForProvisionerParameters := "map[string]string{"
-	for _, k := range keysForProvisionerParameters {
-		mapStringForProvisionerParameters += fmt.Sprintf("%v: %v,", k, this.ProvisionerParameters[k])
+	github_com_gogo_protobuf_sortkeys.Strings(keysForParameters)
+	mapStringForParameters := "map[string]string{"
+	for _, k := range keysForParameters {
+		mapStringForParameters += fmt.Sprintf("%v: %v,", k, this.Parameters[k])
 	}
-	mapStringForProvisionerParameters += "}"
+	mapStringForParameters += "}"
 	s := strings.Join([]string{`&StorageClass{`,
 		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
 		`Provisioner:` + fmt.Sprintf("%v", this.Provisioner) + `,`,
-		`ProvisionerParameters:` + mapStringForProvisionerParameters + `,`,
+		`Parameters:` + mapStringForParameters + `,`,
 		`}`,
 	}, "")
 	return s
@@ -13179,7 +13179,7 @@ func (m *StorageClass) Unmarshal(data []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ProvisionerParameters", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Parameters", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -13283,10 +13283,10 @@ func (m *StorageClass) Unmarshal(data []byte) error {
 			}
 			mapvalue := string(data[iNdEx:postStringIndexmapvalue])
 			iNdEx = postStringIndexmapvalue
-			if m.ProvisionerParameters == nil {
-				m.ProvisionerParameters = make(map[string]string)
+			if m.Parameters == nil {
+				m.Parameters = make(map[string]string)
 			}
-			m.ProvisionerParameters[mapkey] = mapvalue
+			m.Parameters[mapkey] = mapvalue
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

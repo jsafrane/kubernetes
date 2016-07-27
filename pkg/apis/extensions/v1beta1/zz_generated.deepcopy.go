@@ -1344,14 +1344,14 @@ func DeepCopy_v1beta1_StorageClass(in interface{}, out interface{}, c *conversio
 			return err
 		}
 		out.Provisioner = in.Provisioner
-		if in.ProvisionerParameters != nil {
-			in, out := &in.ProvisionerParameters, &out.ProvisionerParameters
+		if in.Parameters != nil {
+			in, out := &in.Parameters, &out.Parameters
 			*out = make(map[string]string)
 			for key, val := range *in {
 				(*out)[key] = val
 			}
 		} else {
-			out.ProvisionerParameters = nil
+			out.Parameters = nil
 		}
 		return nil
 	}

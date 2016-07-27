@@ -42,7 +42,7 @@ func validNewStorageClass(name string) *extensions.StorageClass {
 			Name: name,
 		},
 		Provisioner: "kubernetes.io/aws-ebs",
-		ProvisionerParameters: map[string]string{
+		Parameters: map[string]string{
 			"foo": "bar",
 		},
 	}
@@ -78,13 +78,13 @@ func TestUpdate(t *testing.T) {
 		// updateFunc
 		func(obj runtime.Object) runtime.Object {
 			object := obj.(*extensions.StorageClass)
-			object.ProvisionerParameters = map[string]string{"foo": "bar"}
+			object.Parameters = map[string]string{"foo": "bar"}
 			return object
 		},
 		//invalid update
 		func(obj runtime.Object) runtime.Object {
 			object := obj.(*extensions.StorageClass)
-			object.ProvisionerParameters = map[string]string{"faz": "bar"}
+			object.Parameters = map[string]string{"faz": "bar"}
 			return object
 		},
 	)

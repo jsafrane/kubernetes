@@ -955,9 +955,9 @@ message StorageClass {
   // Provisioner indicates the type of the provisioner.
   optional string provisioner = 2;
 
-  // ProvisionerParameters holds the parameters for the provisioner that should
+  // Parameters holds the parameters for the provisioner that should
   // create volumes of this storage class.
-  map<string, string> provisionerParameters = 3;
+  map<string, string> parameters = 3;
 }
 
 // StorageClassList is a collection of storage classes.

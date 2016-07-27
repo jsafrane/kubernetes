@@ -1214,9 +1214,9 @@ type StorageClass struct {
 	// Provisioner indicates the type of the provisioner.
 	Provisioner string `json:"provisioner,omitempty" protobuf:"bytes,2,opt,name=provisioner"`
 
-	// ProvisionerParameters holds the parameters for the provisioner that should
+	// Parameters holds the parameters for the provisioner that should
 	// create volumes of this storage class.
-	ProvisionerParameters map[string]string `json:"provisionerParameters,omitempty" protobuf:"bytes,3,rep,name=provisionerParameters"`
+	Parameters map[string]string `json:"parameters,omitempty" protobuf:"bytes,3,rep,name=parameters"`
 }
 
 // StorageClassList is a collection of storage classes.

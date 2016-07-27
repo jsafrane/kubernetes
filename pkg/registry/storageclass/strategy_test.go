@@ -37,7 +37,7 @@ func TestStorageClassStrategy(t *testing.T) {
 			Name: "valid-class",
 		},
 		Provisioner: "kubernetes.io/aws-ebs",
-		ProvisionerParameters: map[string]string{
+		Parameters: map[string]string{
 			"foo": "bar",
 		},
 	}
@@ -55,7 +55,7 @@ func TestStorageClassStrategy(t *testing.T) {
 			ResourceVersion: "4",
 		},
 		Provisioner: "kubernetes.io/aws-ebs",
-		ProvisionerParameters: map[string]string{
+		Parameters: map[string]string{
 			"foo": "bar",
 		},
 	}

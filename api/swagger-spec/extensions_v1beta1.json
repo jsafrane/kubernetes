@@ -10822,9 +10822,9 @@
       "type": "string",
       "description": "Provisioner indicates the type of the provisioner."
      },
-     "provisionerParameters": {
+     "parameters": {
       "type": "object",
-      "description": "ProvisionerParameters holds the parameters for the provisioner that should create volumes of this storage class."
+      "description": "Parameters holds the parameters for the provisioner that should create volumes of this storage class."
      }
     }
    },

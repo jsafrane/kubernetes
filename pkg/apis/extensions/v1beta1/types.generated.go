@@ -20999,7 +20999,7 @@ func (x *StorageClass) CodecEncodeSelf(e *codec1978.Encoder) {
 			const yyr2 bool = false
 			yyq2[0] = true
 			yyq2[1] = x.Provisioner != ""
-			yyq2[2] = len(x.ProvisionerParameters) != 0
+			yyq2[2] = len(x.Parameters) != 0
 			yyq2[3] = x.Kind != ""
 			yyq2[4] = x.APIVersion != ""
 			var yynn2 int
@@ -21060,14 +21060,14 @@ func (x *StorageClass) CodecEncodeSelf(e *codec1978.Encoder) {
 			if yyr2 || yy2arr2 {
 				z.EncSendContainerState(codecSelfer_containerArrayElem1234)
 				if yyq2[2] {
-					if x.ProvisionerParameters == nil {
+					if x.Parameters == nil {
 						r.EncodeNil()
 					} else {
 						yym12 := z.EncBinary()
 						_ = yym12
 						if false {
 						} else {
-							z.F.EncMapStringStringV(x.ProvisionerParameters, false, e)
+							z.F.EncMapStringStringV(x.Parameters, false, e)
 						}
 					}
 				} else {
@@ -21076,16 +21076,16 @@ func (x *StorageClass) CodecEncodeSelf(e *codec1978.Encoder) {
 			} else {
 				if yyq2[2] {
 					z.EncSendContainerState(codecSelfer_containerMapKey1234)
-					r.EncodeString(codecSelferC_UTF81234, string("provisionerParameters"))
+					r.EncodeString(codecSelferC_UTF81234, string("parameters"))
 					z.EncSendContainerState(codecSelfer_containerMapValue1234)
-					if x.ProvisionerParameters == nil {
+					if x.Parameters == nil {
 						r.EncodeNil()
 					} else {
 						yym13 := z.EncBinary()
 						_ = yym13
 						if false {
 						} else {
-							z.F.EncMapStringStringV(x.ProvisionerParameters, false, e)
+							z.F.EncMapStringStringV(x.Parameters, false, e)
 						}
 					}
 				}
@@ -21214,11 +21214,11 @@ func (x *StorageClass) codecDecodeSelfFromMap(l int, d *codec1978.Decoder) {
 			} else {
 				x.Provisioner = string(r.DecodeString())
 			}
-		case "provisionerParameters":
+		case "parameters":
 			if r.TryDecodeAsNil() {
-				x.ProvisionerParameters = nil
+				x.Parameters = nil
 			} else {
-				yyv6 := &x.ProvisionerParameters
+				yyv6 := &x.Parameters
 				yym7 := z.DecBinary()
 				_ = yym7
 				if false {
@@ -21297,9 +21297,9 @@ func (x *StorageClass) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 	}
 	z.DecSendContainerState(codecSelfer_containerArrayElem1234)
 	if r.TryDecodeAsNil() {
-		x.ProvisionerParameters = nil
+		x.Parameters = nil
 	} else {
-		yyv13 := &x.ProvisionerParameters
+		yyv13 := &x.Parameters
 		yym14 := z.DecBinary()
 		_ = yym14
 		if false {
