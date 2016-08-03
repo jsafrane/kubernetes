@@ -28,6 +28,8 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/gcfg.v1"
+
 	"github.com/rackspace/gophercloud"
 	osvolumeattach "github.com/rackspace/gophercloud/openstack/compute/v2/extensions/volumeattach"
 	osservers "github.com/rackspace/gophercloud/openstack/compute/v2/servers"
@@ -36,7 +38,6 @@ import (
 	"github.com/rackspace/gophercloud/rackspace/blockstorage/v1/volumes"
 	"github.com/rackspace/gophercloud/rackspace/compute/v2/servers"
 	"github.com/rackspace/gophercloud/rackspace/compute/v2/volumeattach"
-	"gopkg.in/gcfg.v1"
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
@@ -474,7 +475,7 @@ func (os *Rackspace) GetZone() (cloudprovider.Zone, error) {
 }
 
 // Create a volume of given size (in GiB)
-func (rs *Rackspace) CreateVolume(name string, size int, tags *map[string]string) (volumeName string, err error) {
+func (rs *Rackspace) CreateVolume(name string, size int, volumeType, availability string, tags *map[string]string) (volumeName string, err error) {
 	return "", errors.New("unimplemented")
 }
 
