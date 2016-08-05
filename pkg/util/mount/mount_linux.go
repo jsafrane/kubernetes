@@ -323,14 +323,18 @@ func (mounter *SafeFormatAndMount) formatAndMount(source string, target string, 
 	err = mounter.Interface.Mount(source, target, fstype, options)
 	if err != nil {
 		// It is possible that this disk is not formatted. Double check using diskLooksUnformatted
-		notFormatted, err := mounter.diskLooksUnformatted(source)
-		if err == nil && notFormatted {
-			args = []string{source}
+		existingFormat, err := mounter.getDiskFormat(source)
+		if err != nil {
+			return err
+		}
+		if existingFormat == "" {
 			// Disk is unformatted so format it.
+			args = []string{source}
 			// Use 'ext4' as the default
 			if len(fstype) == 0 {
 				fstype = "ext4"
 			}
+
 			if fstype == "ext4" || fstype == "ext3" {
 				args = []string{"-E", "lazy_itable_init=0,lazy_journal_init=0", "-F", source}
 			}
@@ -344,13 +348,22 @@ func (mounter *SafeFormatAndMount) formatAndMount(source string, target string, 
 			}
 			glog.Errorf("format of disk %q failed: type:(%q) target:(%q) options:(%q)error:(%v)", source, fstype, target, options, err)
 			return err
+		} else {
+			// Disk is already formatted and failed to mount
+			if len(fstype) == 0 || fstype == existingFormat {
+				// This is mount error
+				return err
+			} else {
+				// Block device is formatted with unexpected filesystem
+				return fmt.Errorf("failed to mount volume as %q, it's already formatted with %q. Mount error: %v", fstype, existingFormat, err)
+			}
 		}
 	}
 	return err
 }
 
 // diskLooksUnformatted uses 'lsblk' to see if the given disk is unformated
-func (mounter *SafeFormatAndMount) diskLooksUnformatted(disk string) (bool, error) {
+func (mounter *SafeFormatAndMount) getDiskFormat(disk string) (string, error) {
 	args := []string{"-nd", "-o", "FSTYPE", disk}
 	cmd := mounter.Runner.Command("lsblk", args...)
 	glog.V(4).Infof("Attempting to determine if disk %q is formatted using lsblk with args: (%v)", disk, args)
@@ -362,8 +375,8 @@ func (mounter *SafeFormatAndMount) diskLooksUnformatted(disk string) (bool, erro
 
 	if err != nil {
 		glog.Errorf("Could not determine if disk %q is formatted (%v)", disk, err)
-		return false, err
+		return "", err
 	}
 
-	return output == "", nil
+	return strings.TrimSpace(output), nil
 }
