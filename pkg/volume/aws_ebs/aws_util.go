@@ -98,6 +98,10 @@ func (util *AWSDiskUtil) CreateVolume(c *awsElasticBlockStoreProvisioner) (strin
 			if err != nil {
 				return "", 0, nil, fmt.Errorf("invalid iopsPerGB value %q, must be integer between 1 and 30: %v", v, err)
 			}
+		case "encrypted":
+			volumeOptions.Encrypted = v
+		case "kmskeyid":
+			volumeOptions.KmsKeyId = v
 		default:
 			return "", 0, nil, fmt.Errorf("invalid option %q for volume plugin %s", k, c.plugin.GetPluginName())
 		}
