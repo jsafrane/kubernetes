@@ -55,6 +55,10 @@ var _ volume.Deleter = &glusterfsVolumeDeleter{}
 const (
 	glusterfsPluginName = "kubernetes.io/glusterfs"
 	volprefix           = "vol_"
+
+	annGlusterRestUrl     = "glusterfs.kubernetes.io/resturl"
+	annGlusterRestUser    = "glusterfs.kubernetes.io/restuser"
+	annGlusterRestUserKey = "glusterfs.kubernetes.io/restuserkey"
 )
 
 func (plugin *glusterfsPlugin) Init(host volume.VolumeHost) error {
@@ -353,7 +357,6 @@ type provisioningConfig struct {
 
 type glusterfsVolumeProvisioner struct {
 	*glusterfsMounter
-	*provisioningConfig
 	options volume.VolumeOptions
 }
 
@@ -372,12 +375,14 @@ func (plugin *glusterfsPlugin) newDeleterInternal(spec *volume.Spec) (volume.Del
 				plugin:  plugin,
 			},
 			path: spec.PersistentVolume.Spec.Glusterfs.Path,
-		}}, nil
+		},
+		pv: spec.PersistentVolume,
+	}, nil
 }
 
 type glusterfsVolumeDeleter struct {
 	*glusterfsMounter
-	*provisioningConfig
+	pv *api.PersistentVolume
 }
 
 func (d *glusterfsVolumeDeleter) GetPath() string {
@@ -389,9 +394,14 @@ func (d *glusterfsVolumeDeleter) Delete() error {
 	var err error
 	glog.V(2).Infof("glusterfs: delete volume :%s ", d.glusterfsMounter.path)
 	volumetodel := d.glusterfsMounter.path
-	d.provisioningConfig = d.plugin.clusterconf
+
+	cfg, err := parseVolumeAnnotations(d.pv)
+	if err != nil {
+		return nil
+	}
+
 	newvolumetodel := dstrings.TrimPrefix(volumetodel, volprefix)
-	cli := gcli.NewClient(d.url, d.user, d.userKey)
+	cli := gcli.NewClient(cfg.url, cfg.user, cfg.userKey)
 	if cli == nil {
 		glog.Errorf("glusterfs: failed to create gluster rest client")
 		return fmt.Errorf("glusterfs: failed to create gluster rest client, REST server authentication failed")
@@ -413,31 +423,31 @@ func (r *glusterfsVolumeProvisioner) Provision() (*api.PersistentVolume, error) 
 		return nil, fmt.Errorf("glusterfs: not able to parse your claim Selector")
 	}
 	glog.V(4).Infof("glusterfs: Provison VolumeOptions %v", r.options)
+	cfg := &provisioningConfig{}
 	for k, v := range r.options.Parameters {
 		switch dstrings.ToLower(k) {
 		case "endpoint":
-			r.plugin.clusterconf.endpoint = v
+			cfg.endpoint = v
 		case "resturl":
-			r.plugin.clusterconf.url = v
+			cfg.url = v
 		case "restuser":
-			r.plugin.clusterconf.user = v
+			cfg.user = v
 		case "restuserkey":
-			r.plugin.clusterconf.userKey = v
+			cfg.userKey = v
 		default:
 			return nil, fmt.Errorf("glusterfs: invalid option %q for volume plugin %s", k, r.plugin.GetPluginName())
 		}
 	}
 
-	if len(r.plugin.clusterconf.url) == 0 {
-		return.fmt.Errorf("StorageClass for provisioner %q must contain 'resturl' parameter", r.plugin.GetPluginName())
+	if len(cfg.url) == 0 {
+		return nil, fmt.Errorf("StorageClass for provisioner %q must contain 'resturl' parameter", r.plugin.GetPluginName())
 	}
-	if len(r.plugin.clusterconf.endpoint) == 0 {
-		return.fmt.Errorf("StorageClass for provisioner %q must contain 'endpoint' parameter", r.plugin.GetPluginName())
+	if len(cfg.endpoint) == 0 {
+		return nil, fmt.Errorf("StorageClass for provisioner %q must contain 'endpoint' parameter", r.plugin.GetPluginName())
 	}
 
-	glog.V(4).Infof("glusterfs: storage class parameters in plugin clusterconf %v", r.plugin.clusterconf)
-	r.provisioningConfig = r.plugin.clusterconf
-	glusterfs, sizeGB, err := r.CreateVolume()
+	glog.V(4).Infof("glusterfs: storage class parameters in plugin clusterconf %v", cfg)
+	glusterfs, sizeGB, err := r.CreateVolume(cfg)
 	if err != nil {
 		glog.Errorf("glusterfs: create volume err: %s.", err)
 		return nil, fmt.Errorf("glusterfs: create volume err: %s.", err)
@@ -449,18 +459,16 @@ func (r *glusterfsVolumeProvisioner) Provision() (*api.PersistentVolume, error) 
 	pv.Spec.Capacity = api.ResourceList{
 		api.ResourceName(api.ResourceStorage): resource.MustParse(fmt.Sprintf("%dGi", sizeGB)),
 	}
+	assembleVolumeAnnotations(cfg, pv)
 	return pv, nil
 }
 
-func (p *glusterfsVolumeProvisioner) CreateVolume() (r *api.GlusterfsVolumeSource, size int, err error) {
+func (p *glusterfsVolumeProvisioner) CreateVolume(cfg *provisioningConfig) (r *api.GlusterfsVolumeSource, size int, err error) {
 	volSizeBytes := p.options.Capacity.Value()
 	sz := int(volume.RoundUpSize(volSizeBytes, 1024*1024*1024))
 	glog.V(2).Infof("glusterfs: create volume of size:%d bytes", volSizeBytes)
-	if p.provisioningConfig.url == "" {
-		glog.Errorf("glusterfs : rest server endpoint is empty")
-		return nil, 0, fmt.Errorf("failed to create gluster REST client, REST URL is empty")
-	}
-	cli := gcli.NewClient(p.url, p.user, p.userKey)
+
+	cli := gcli.NewClient(cfg.url, cfg.user, cfg.userKey)
 	if cli == nil {
 		glog.Errorf("glusterfs: failed to create gluster rest client")
 		return nil, 0, fmt.Errorf("failed to create gluster REST client, REST server authentication failed")
@@ -473,8 +481,52 @@ func (p *glusterfsVolumeProvisioner) CreateVolume() (r *api.GlusterfsVolumeSourc
 	}
 	glog.V(1).Infof("glusterfs: volume with size :%d and name:%s created", volume.Size, volume.Name)
 	return &api.GlusterfsVolumeSource{
-		EndpointsName: p.provisioningConfig.endpoint,
+		EndpointsName: cfg.endpoint,
 		Path:          volume.Name,
 		ReadOnly:      false,
 	}, sz, nil
+}
+
+// assembleVolumeAnnotations stores configuration of Gluster provisioner into
+// annotations of a provisioned PV. Deleter is supposed to find these
+// annotations there and reconstruct configuration of the provisioner to delete
+// the volume.
+func assembleVolumeAnnotations(cfg *provisioningConfig, pv *api.PersistentVolume) {
+	if pv.Annotations == nil {
+		pv.Annotations = map[string]string{}
+	}
+	pv.Annotations[annGlusterRestUrl] = cfg.url
+	pv.Annotations[annGlusterRestUser] = cfg.user
+	pv.Annotations[annGlusterRestUserKey] = cfg.userKey
+	// cfg.endpoint is not relevant for deleter
+}
+
+// parseVolumeAnnotations parses annotations created by
+// assembleVolumeAnnotations and reconstructs provisioning configuration.
+func parseVolumeAnnotations(pv *api.PersistentVolume) (*provisioningConfig, error) {
+	cfg := &provisioningConfig{}
+	var found bool
+
+	if pv.Annotations == nil {
+		return nil, fmt.Errorf("cannot parse volume annotations: no annotations found")
+	}
+
+	cfg.url, found = pv.Annotations[annGlusterRestUrl]
+	if !found {
+		return nil, fmt.Errorf("cannot parse volume annotations: annotation %q not found", annGlusterRestUrl)
+	}
+	if len(cfg.url) == 0 {
+		return nil, fmt.Errorf("cannot parse volume annotations: annotation %q is empty", annGlusterRestUrl)
+	}
+
+	cfg.user, found = pv.Annotations[annGlusterRestUser]
+	if !found {
+		return nil, fmt.Errorf("cannot parse volume annotations: annotation %q not found", annGlusterRestUser)
+	}
+
+	cfg.userKey, found = pv.Annotations[annGlusterRestUserKey]
+	if !found {
+		return nil, fmt.Errorf("cannot parse volume annotations: annotation %q not found", annGlusterRestUserKey)
+	}
+	return cfg, nil
 }
