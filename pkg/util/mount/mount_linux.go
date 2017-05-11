@@ -25,6 +25,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"reflect"
 	"strconv"
 	"strings"
 	"syscall"
@@ -41,6 +42,8 @@ const (
 	expectedNumFieldsPerLine = 6
 	// Location of the mount file to use
 	procMountsPath = "/proc/mounts"
+	// Location of the mountinfo file
+	procMountInfoPath = "/proc/self/mountinfo"
 )
 
 const (
@@ -325,6 +328,12 @@ func readProcMountsFrom(file io.Reader, out *[]MountPoint) (uint32, error) {
 	return hash.Sum32(), nil
 }
 
+func (mounter *Mounter) MakeShared(path string) error {
+	mountCmd := defaultMountCommand
+	mountArgs := []string{}
+	return doMakeShared(path, procMountInfoPath, mountCmd, mountArgs)
+}
+
 // formatAndMount uses unix utils to format and mount the given disk
 func (mounter *SafeFormatAndMount) formatAndMount(source string, target string, fstype string, options []string) error {
 	options = append(options, "defaults")
@@ -424,4 +433,130 @@ func (mounter *SafeFormatAndMount) getDiskFormat(disk string) (string, error) {
 	// The device has dependent devices, most probably partitions (LVM, LUKS
 	// and MD RAID are reported as FSTYPE and caught above).
 	return "unknown data, probably partitions", nil
+}
+
+// isShared returns true, if given path is on a mount point that has shared
+// mount propagation.
+func isShared(path string, filename string) (bool, error) {
+	infos, err := getMountInfo(filename)
+	if err != nil {
+		return false, err
+	}
+
+	// process /proc/xxx/mountinfo in backward order and find the first mount
+	// point that is prefix of 'path' - that's the mount where path resides
+	var info *mountInfo
+	for i := len(infos) - 1; i >= 0; i-- {
+		if strings.HasPrefix(path, infos[i].mountPoint) {
+			info = &infos[i]
+			break
+		}
+	}
+	if info == nil {
+		return false, fmt.Errorf("cannot find mount point for %q", path)
+	}
+
+	// parse optional parameters
+	for _, opt := range info.optional {
+		if strings.HasPrefix(opt, "shared:") {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+type mountInfo struct {
+	root, mountPoint string
+	// list of "optional parameters", mount propagation is one of them
+	optional []string
+}
+
+// getMountInfo reads /proc/xxx/mountinfo and makes sure it did not change
+// between reads. This protects us from kernel adding/removing lines there
+// between individual read() syscalls.
+func getMountInfo(filename string) ([]mountInfo, error) {
+	// Read the file until we get the same content twice
+	oldInfo, err := parseMountInfo(filename)
+	if err != nil {
+		return []mountInfo{}, err
+	}
+	for {
+		newInfo, err := parseMountInfo(filename)
+		if err != nil {
+			return []mountInfo{}, err
+		}
+		if reflect.DeepEqual(oldInfo, newInfo) {
+			// Content is the same, finish
+			return oldInfo, nil
+		}
+		// Content is different, continue in the loop and try again
+		oldInfo = newInfo
+	}
+}
+
+// parseMountInfo parses /proc/xxx/mountinfo.
+func parseMountInfo(filename string) ([]mountInfo, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return []mountInfo{}, err
+	}
+	scanner := bufio.NewReader(file)
+	infos := []mountInfo{}
+
+	for {
+		line, err := scanner.ReadString('\n')
+		if err == io.EOF {
+			break
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 7 {
+			return nil, fmt.Errorf("wrong number of fields in (expected %d, got %d): %s", 8, len(fields), line)
+		}
+		info := mountInfo{
+			root:       fields[3],
+			mountPoint: fields[4],
+			optional:   []string{},
+		}
+		for i := 6; i < len(fields) && fields[i] != "-"; i++ {
+			info.optional = append(info.optional, fields[i])
+		}
+		infos = append(infos, info)
+	}
+	return infos, nil
+}
+
+// doMakeShared is common implementation of MakeShared on Linux. It checks if
+// path is shared and bind-mounts it as shared if needed. mountCmd and mountArgs
+// are expected to contain mount-like command, doMakeShared will add '--bind
+// <path> <path>' and '--make-shared <path>' to mountArgs.
+func doMakeShared(path string, mountInfoFilename string, mountCmd string, mountArgs []string) error {
+	shared, err := isShared(path, mountInfoFilename)
+	if err != nil {
+		return err
+	}
+	if shared {
+		glog.V(4).Infof("Directory %s is already on a shared mount", path)
+		return nil
+	}
+
+	glog.V(2).Infof("Bind-mounting %q with shared mount propagation", path)
+	// mount --bind /var/lib/kubelet /var/lib/kubelet
+	bindArgs := append(mountArgs, "--bind", path, path)
+	command := exec.Command(mountCmd, bindArgs...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		glog.Errorf("Failed to bind-mount %s: %v\nExecuted: %s %v, Output: %s", path, err, mountCmd, mountArgs, string(output))
+		return fmt.Errorf("failed to bind-mount %s: %v", path, err)
+	}
+
+	// mount --make-rshared /var/lib/kubelet
+	makeSharedArgs := append(mountArgs, "--make-rshared", path)
+	command = exec.Command(mountCmd, makeSharedArgs...)
+	output, err = command.CombinedOutput()
+	if err != nil {
+		glog.Errorf("Failed to make %s shared: %v\nExecuted: %s %v, Output: %s", path, err, mountCmd, mountArgs, string(output))
+		return fmt.Errorf("failed to make %s shared: %v", path, err)
+	}
+
+	return nil
 }

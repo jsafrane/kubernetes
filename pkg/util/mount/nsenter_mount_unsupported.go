@@ -53,3 +53,7 @@ func (*NsenterMounter) PathIsDevice(pathname string) (bool, error) {
 func (*NsenterMounter) GetDeviceNameFromMount(mountPath, pluginDir string) (string, error) {
 	return "", nil
 }
+
+func (*NsenterMounter) MakeShared(path string) error {
+	return nil
+}
