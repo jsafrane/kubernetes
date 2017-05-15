@@ -167,3 +167,7 @@ func (f *FakeMounter) GetDeviceNameFromMount(mountPath, pluginDir string) (strin
 func (f *FakeMounter) MakeShared(path string) error {
 	return nil
 }
+
+func (f *FakeMounter) Exec(cmd string, args []string) ([]byte, error) {
+	return nil, nil
+}

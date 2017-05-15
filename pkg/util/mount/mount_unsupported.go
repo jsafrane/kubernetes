@@ -65,3 +65,7 @@ func (mounter *SafeFormatAndMount) diskLooksUnformatted(disk string) (bool, erro
 func IsNotMountPoint(file string) (bool, error) {
 	return true, nil
 }
+
+func (*NsenterMounter) Exec(cmd string, args []string) ([]byte, error) {
+	return []byte{}, nil
+}

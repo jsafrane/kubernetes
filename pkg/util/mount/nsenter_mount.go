@@ -113,11 +113,11 @@ func (n *NsenterMounter) Mount(source string, target string, fstype string, opti
 // requested mount.
 func (n *NsenterMounter) doNsenterMount(source, target, fstype string, options []string) error {
 	glog.V(5).Infof("nsenter Mounting %s %s %s %v", source, target, fstype, options)
-	args := n.makeNsenterArgs(source, target, fstype, options)
+	cmd := n.absHostPath("mount")
+	args := makeMountArgs(source, target, fstype, options)
 
-	glog.V(5).Infof("Mount command: %v %v", nsenterPath, args)
-	exec := exec.New()
-	outputBytes, err := exec.Command(nsenterPath, args...).CombinedOutput()
+	glog.V(5).Infof("Mount command: %v %v", cmd, args)
+	outputBytes, err := n.Exec(cmd, args)
 	if len(outputBytes) != 0 {
 		glog.V(5).Infof("Output of mounting %s to %s: %v", source, target, string(outputBytes))
 	}
@@ -125,32 +125,13 @@ func (n *NsenterMounter) doNsenterMount(source, target, fstype string, options [
 	return err
 }
 
-// makeNsenterArgs makes a list of argument to nsenter in order to do the
-// requested mount.
-func (n *NsenterMounter) makeNsenterArgs(source, target, fstype string, options []string) []string {
-	nsenterArgs := []string{
-		"--mount=/rootfs/proc/1/ns/mnt",
-		"--",
-		n.absHostPath("mount"),
-	}
-
-	args := makeMountArgs(source, target, fstype, options)
-
-	return append(nsenterArgs, args...)
-}
-
 // Unmount runs umount(8) in the host's mount namespace.
 func (n *NsenterMounter) Unmount(target string) error {
-	args := []string{
-		"--mount=/rootfs/proc/1/ns/mnt",
-		"--",
-		n.absHostPath("umount"),
-		target,
-	}
+	cmd := n.absHostPath("umount")
+	args := []string{target}
+	glog.V(5).Infof("Unmount command: %v %v", cmd, args)
 
-	glog.V(5).Infof("Unmount command: %v %v", nsenterPath, args)
-	exec := exec.New()
-	outputBytes, err := exec.Command(nsenterPath, args...).CombinedOutput()
+	outputBytes, err := n.Exec(cmd, args)
 	if len(outputBytes) != 0 {
 		glog.V(5).Infof("Output of unmounting %s: %v", target, string(outputBytes))
 	}
@@ -180,11 +161,11 @@ func (n *NsenterMounter) IsLikelyNotMountPoint(file string) (bool, error) {
 	// the first of multiple possible mountpoints using --first-only.
 	// Also add fstype output to make sure that the output of target file will give the full path
 	// TODO: Need more refactoring for this function. Track the solution with issue #26996
-	args := []string{"--mount=/rootfs/proc/1/ns/mnt", "--", n.absHostPath("findmnt"), "-o", "target,fstype", "--noheadings", "--first-only", "--target", file}
-	glog.V(5).Infof("findmnt command: %v %v", nsenterPath, args)
+	cmd := n.absHostPath("findmnt")
+	args := []string{"-o", "target,fstype", "--noheadings", "--first-only", "--target", file}
+	glog.V(5).Infof("findmnt command: %v %v", cmd, args)
 
-	exec := exec.New()
-	out, err := exec.Command(nsenterPath, args...).CombinedOutput()
+	out, err := n.Exec(cmd, args)
 	if err != nil {
 		glog.V(2).Infof("Failed findmnt command for path %s: %v", file, err)
 		// Different operating systems behave differently for paths which are not mount points.
@@ -239,4 +220,16 @@ func (n *NsenterMounter) MakeShared(path string) error {
 		n.absHostPath("mount"),
 	}
 	return doMakeShared(path, hostProcMountinfoPath, nsenterCmd, nsenterArgs)
+}
+
+func (n *NsenterMounter) Exec(cmd string, args []string) ([]byte, error) {
+	nsenterArgs := []string{
+		"--mount=/rootfs/proc/1/ns/mnt",
+		"--",
+	}
+	nsenterArgs = append(nsenterArgs, cmd)
+	nsenterArgs = append(nsenterArgs, args...)
+	e := exec.New()
+	c := e.Command(nsenterPath, nsenterArgs...)
+	return c.CombinedOutput()
 }

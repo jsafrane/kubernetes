@@ -58,6 +58,9 @@ type Interface interface {
 	// MakeShared checks that given path is on a mount with 'shared' mount
 	// propagation. If not, it bind-mounts the path as shared.
 	MakeShared(path string) error
+	// Exec executes given command in a place where mount utilities are and
+	// returns combined stdout + stderr
+	Exec(cmd string, args []string) ([]byte, error)
 }
 
 // Compile-time check to ensure all Mounter implementations satisfy

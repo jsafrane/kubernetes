@@ -334,6 +334,11 @@ func (mounter *Mounter) MakeShared(path string) error {
 	return doMakeShared(path, procMountInfoPath, mountCmd, mountArgs)
 }
 
+func (mounter *Mounter) Exec(cmd string, args []string) ([]byte, error) {
+	c := exec.Command(cmd, args...)
+	return c.CombinedOutput()
+}
+
 // formatAndMount uses unix utils to format and mount the given disk
 func (mounter *SafeFormatAndMount) formatAndMount(source string, target string, fstype string, options []string) error {
 	options = append(options, "defaults")
