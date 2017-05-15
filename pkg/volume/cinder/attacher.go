@@ -56,7 +56,7 @@ func (plugin *cinderPlugin) NewAttacher() (volume.Attacher, error) {
 }
 
 func (plugin *cinderPlugin) GetDeviceMountRefs(deviceMountPath string) ([]string, error) {
-	mounter := plugin.host.GetMounter()
+	mounter := plugin.host.GetMounter(plugin.GetPluginName())
 	return mount.GetMountRefs(mounter, deviceMountPath)
 }
 
@@ -197,7 +197,7 @@ func (attacher *cinderDiskAttacher) GetDeviceMountPath(
 
 // FIXME: this method can be further pruned.
 func (attacher *cinderDiskAttacher) MountDevice(spec *volume.Spec, devicePath string, deviceMountPath string) error {
-	mounter := attacher.host.GetMounter()
+	mounter := attacher.host.GetMounter(cinderVolumePluginName)
 	notMnt, err := mounter.IsLikelyNotMountPoint(deviceMountPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -244,7 +244,7 @@ func (plugin *cinderPlugin) NewDetacher() (volume.Detacher, error) {
 		return nil, err
 	}
 	return &cinderDiskDetacher{
-		mounter:        plugin.host.GetMounter(),
+		mounter:        plugin.host.GetMounter(plugin.GetPluginName()),
 		cinderProvider: cinder,
 	}, nil
 }
