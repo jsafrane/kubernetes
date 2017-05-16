@@ -152,6 +152,8 @@ message Mount {
     bool readonly = 3;
     // If set, the mount needs SELinux relabeling.
     bool selinux_relabel = 4;
+    // Whether the mount needs Propagation mode set.
+    bool needs_propagation = 5;
 }
 
 // NamespaceOption provides options for Linux namespaces.

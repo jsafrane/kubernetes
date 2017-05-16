@@ -134,9 +134,21 @@ func (ds *dockerService) CreateContainer(podSandboxID string, config *runtimeapi
 		},
 	}
 
+	// Set propagation mode to "rslave" for HostPath volume mount if current
+	// Docker version supports it
+	propagation := ""
+	if ds.enableHostPathMountPropagation {
+		if sandboxConfig.GetLinux().GetSecurityContext().GetPrivileged() {
+			propagation = "rshared"
+		} else {
+			propagation = "rslave"
+		}
+	}
+	glog.V(5).Infof("JSAF: set mount propagation: %s", propagation)
+
 	// Fill the HostConfig.
 	hc := &dockercontainer.HostConfig{
-		Binds: generateMountBindings(config.GetMounts()),
+		Binds: generateMountBindings(config.GetMounts(), propagation),
 	}
 
 	// Apply Linux-specific options if applicable.

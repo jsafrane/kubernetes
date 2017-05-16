@@ -146,7 +146,7 @@ var internalLabelKeys []string = []string{containerTypeLabelKey, containerLogPat
 
 // NOTE: Anything passed to DockerService should be eventually handled in another way when we switch to running the shim as a different process.
 func NewDockerService(client libdocker.Interface, seccompProfileRoot string, podSandboxImage string, streamingConfig *streaming.Config,
-	pluginSettings *NetworkPluginSettings, cgroupsName string, kubeCgroupDriver string, execHandlerName, dockershimRootDir string, disableSharedPID bool) (DockerService, error) {
+	pluginSettings *NetworkPluginSettings, cgroupsName string, kubeCgroupDriver string, execHandlerName, dockershimRootDir string, disableSharedPID bool, enableHostPathMountPropagation bool) (DockerService, error) {
 	c := libdocker.NewInstrumentedInterface(client)
 	checkpointHandler, err := NewPersistentCheckpointHandler(dockershimRootDir)
 	if err != nil {
@@ -172,8 +172,9 @@ func NewDockerService(client libdocker.Interface, seccompProfileRoot string, pod
 			client:      client,
 			execHandler: execHandler,
 		},
-		containerManager:  cm.NewContainerManager(cgroupsName, client),
-		checkpointHandler: checkpointHandler,
+		containerManager:               cm.NewContainerManager(cgroupsName, client),
+		checkpointHandler:              checkpointHandler,
+		enableHostPathMountPropagation: enableHostPathMountPropagation,
 		disableSharedPID:  disableSharedPID,
 	}
 
@@ -251,8 +252,9 @@ type dockerService struct {
 	network            *network.PluginManager
 	containerManager   cm.ContainerManager
 	// cgroup driver used by Docker runtime.
-	cgroupDriver      string
-	checkpointHandler CheckpointHandler
+	cgroupDriver                   string
+	checkpointHandler              CheckpointHandler
+	enableHostPathMountPropagation bool
 	// legacyCleanup indicates whether legacy cleanup has finished or not.
 	legacyCleanup legacyCleanupFlag
 	// caches the version of the runtime.
