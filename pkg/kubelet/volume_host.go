@@ -19,11 +19,17 @@ package kubelet
 import (
 	"fmt"
 	"net"
+	"time"
 
+	"github.com/golang/glog"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/pkg/cloudprovider"
+	"k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/secret"
 	"k8s.io/kubernetes/pkg/util/io"
 	"k8s.io/kubernetes/pkg/util/mount"
@@ -114,6 +120,28 @@ func (kvh *kubeletVolumeHost) GetCloudProvider() cloudprovider.Interface {
 }
 
 func (kvh *kubeletVolumeHost) GetMounter(pluginName string) mount.Interface {
+	// TODO: add caches / better listing
+	// TODO: check namespace
+	labelName := "mount." + pluginName
+	pods := kvh.kubelet.GetPods()
+	labelSelector := &metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			labelName: "true",
+		},
+	}
+	selector, err := metav1.LabelSelectorAsSelector(labelSelector)
+	if err != nil {
+		glog.Errorf("can't get label selector")
+	}
+
+	for _, pod := range pods {
+		if selector.Matches(labels.Set(pod.Labels)) {
+			glog.V(5).Infof("Using pod %s/%s to mount %s", pod.Namespace, pod.Name, pluginName)
+			exec := &containerExec{pod: pod, kl: kvh.kubelet}
+			return mount.NewExecMounter(exec, kvh.kubelet.mounter)
+		}
+	}
+	glog.V(5).Infof("Using host to mount %s", pluginName)
 	return kvh.kubelet.mounter
 }
 
@@ -139,4 +167,17 @@ func (kvh *kubeletVolumeHost) GetNodeAllocatable() (v1.ResourceList, error) {
 
 func (kvh *kubeletVolumeHost) GetSecretFunc() func(namespace, name string) (*v1.Secret, error) {
 	return kvh.secretManager.GetSecret
+}
+
+// TODO: place somewhere else?
+type containerExec struct {
+	pod *v1.Pod
+	kl  *Kubelet
+}
+
+var _ mount.Exec = &containerExec{}
+
+func (e *containerExec) Run(cmd string, args []string, timeout time.Duration) ([]byte, error) {
+	c := append([]string{cmd}, args...)
+	return e.kl.RunInContainer(container.GetPodFullName(e.pod), e.pod.UID, e.pod.Spec.Containers[0].Name, c)
 }
