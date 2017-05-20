@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	"k8s.io/kubernetes/pkg/util/exec"
 )
 
 const (
@@ -89,7 +88,7 @@ type MountPoint struct {
 // mounts it otherwise the device is formatted first then mounted.
 type SafeFormatAndMount struct {
 	Interface
-	Runner exec.Interface
+	Exec
 }
 
 // FormatAndMount formats the given disk, if needed, and mounts it.

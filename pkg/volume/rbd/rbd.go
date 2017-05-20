@@ -31,6 +31,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/strings"
 	"k8s.io/kubernetes/pkg/volume"
 	volutil "k8s.io/kubernetes/pkg/volume/util"
+	"k8s.io/kubernetes/pkg/volume/util/volumehelper"
 )
 
 // This is the primary entrypoint for volume plugins.
@@ -141,7 +142,7 @@ func (plugin *rbdPlugin) newMounterInternal(spec *volume.Spec, podUID types.UID,
 			Pool:     pool,
 			ReadOnly: readOnly,
 			manager:  manager,
-			mounter:  &mount.SafeFormatAndMount{Interface: mounter, Runner: exec.New()},
+			mounter:  volumehelper.NewSafeFormatAndMountFromHost(plugin.GetPluginName(), plugin.host),
 			plugin:   plugin,
 		},
 		Mon:          source.CephMonitors,
@@ -165,7 +166,7 @@ func (plugin *rbdPlugin) newUnmounterInternal(volName string, podUID types.UID, 
 				podUID:  podUID,
 				volName: volName,
 				manager: manager,
-				mounter: &mount.SafeFormatAndMount{Interface: mounter, Runner: exec.New()},
+				mounter: volumehelper.NewSafeFormatAndMountFromHost(plugin.GetPluginName(), plugin.host),
 				plugin:  plugin,
 			},
 			Mon: make([]string, 0),
