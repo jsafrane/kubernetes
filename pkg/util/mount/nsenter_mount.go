@@ -87,9 +87,10 @@ func NewNsenterMounter() *NsenterMounter {
 var _ = Interface(&NsenterMounter{})
 
 const (
-	hostRootFsPath     = "/rootfs"
-	hostProcMountsPath = "/rootfs/proc/1/mounts"
-	nsenterPath        = "nsenter"
+	hostRootFsPath        = "/rootfs"
+	hostProcMountsPath    = "/rootfs/proc/1/mounts"
+	hostProcMountinfoPath = "/rootfs/proc/1/mountinfo"
+	nsenterPath           = "nsenter"
 )
 
 // Mount runs mount(8) in the host's root mount namespace.  Aside from this
@@ -228,4 +229,14 @@ func (n *NsenterMounter) absHostPath(command string) string {
 		return command
 	}
 	return path
+}
+
+func (n *NsenterMounter) MakeShared(path string) error {
+	nsenterCmd := nsenterPath
+	nsenterArgs := []string{
+		"--mount=/rootfs/proc/1/ns/mnt",
+		"--",
+		n.absHostPath("mount"),
+	}
+	return doMakeShared(path, hostProcMountinfoPath, nsenterCmd, nsenterArgs)
 }

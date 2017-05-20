@@ -55,6 +55,9 @@ type Interface interface {
 	// GetDeviceNameFromMount finds the device name by checking the mount path
 	// to get the global mount path which matches its plugin directory
 	GetDeviceNameFromMount(mountPath, pluginDir string) (string, error)
+	// MakeShared checks that given path is on a mount with 'shared' mount
+	// propagation. If not, it bind-mounts the path as shared.
+	MakeShared(path string) error
 }
 
 // Compile-time check to ensure all Mounter implementations satisfy

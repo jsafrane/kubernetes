@@ -19,6 +19,9 @@ limitations under the License.
 package mount
 
 import (
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -178,6 +181,108 @@ func TestGetDeviceNameFromMount(t *testing.T) {
 	for i, test := range tests {
 		if device, refs, err := GetDeviceNameFromMount(fm, test.mountPath); err != nil || test.expectedRefs != refs || test.expectedDevice != device {
 			t.Errorf("%d. GetDeviceNameFromMount(%s) = (%s, %d), %v; expected (%s,%d), nil", i, test.mountPath, device, refs, err, test.expectedDevice, test.expectedRefs)
+		}
+	}
+}
+
+func writeFile(content string) (string, string, error) {
+	tempDir, err := ioutil.TempDir("", "mounter_shared_test")
+	if err != nil {
+		return "", "", err
+	}
+	filename := filepath.Join(tempDir, "mountinfo")
+	err = ioutil.WriteFile(filename, []byte(content), 0600)
+	if err != nil {
+		os.RemoveAll(tempDir)
+		return "", "", err
+	}
+	return tempDir, filename, nil
+}
+
+func TestIsSharedSuccess(t *testing.T) {
+	successMountInfo :=
+		`62 0 253:0 / / rw,relatime shared:1 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered
+76 62 8:1 / /boot rw,relatime shared:29 - ext4 /dev/sda1 rw,seclabel,data=ordered
+78 62 0:41 / /tmp rw,nosuid,nodev shared:30 - tmpfs tmpfs rw,seclabel
+80 62 0:42 / /var/lib/nfs/rpc_pipefs rw,relatime shared:31 - rpc_pipefs sunrpc rw
+227 62 253:0 /var/lib/docker/devicemapper /var/lib/docker/devicemapper rw,relatime - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered
+224 62 253:0 /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered
+`
+	tempDir, filename, err := writeFile(successMountInfo)
+	if err != nil {
+		t.Fatalf("cannot create temporary file: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	tests := []struct {
+		name           string
+		path           string
+		expectedResult bool
+	}{
+		{
+			"shared",
+			"/var/lib/kubelet",
+			true,
+		},
+		{
+			"private",
+			"/var/lib/docker/devicemapper/mnt/8a2a5c19eefb06d6f851dfcb240f8c113427f5b49b19658b5c60168e88267693/",
+			false,
+		},
+		{
+			"nested-shared",
+			"/var/lib/docker/devicemapper/test/shared/my/test/directory",
+			true,
+		},
+	}
+	for _, test := range tests {
+		ret, err := isShared(test.path, filename)
+		if err != nil {
+			t.Errorf("test %s got unexpected error: %v", test.name, err)
+		}
+		if ret != test.expectedResult {
+			t.Errorf("test %s expected %v, got %v", test.name, test.expectedResult, ret)
+		}
+	}
+}
+
+func TestIsSharedFailure(t *testing.T) {
+	errorTests := []struct {
+		name    string
+		content string
+	}{
+		{
+			// the first line is too short
+			name: "too-short-line",
+			content: `62 0 253:0 / / rw,relatime
+76 62 8:1 / /boot rw,relatime shared:29 - ext4 /dev/sda1 rw,seclabel,data=ordered
+78 62 0:41 / /tmp rw,nosuid,nodev shared:30 - tmpfs tmpfs rw,seclabel
+80 62 0:42 / /var/lib/nfs/rpc_pipefs rw,relatime shared:31 - rpc_pipefs sunrpc rw
+227 62 253:0 /var/lib/docker/devicemapper /var/lib/docker/devicemapper rw,relatime - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered
+224 62 253:0 /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered
+`,
+		},
+		{
+			// there is no root mount
+			name: "no-root-mount",
+			content: `76 62 8:1 / /boot rw,relatime shared:29 - ext4 /dev/sda1 rw,seclabel,data=ordered
+78 62 0:41 / /tmp rw,nosuid,nodev shared:30 - tmpfs tmpfs rw,seclabel
+80 62 0:42 / /var/lib/nfs/rpc_pipefs rw,relatime shared:31 - rpc_pipefs sunrpc rw
+227 62 253:0 /var/lib/docker/devicemapper /var/lib/docker/devicemapper rw,relatime - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered
+224 62 253:0 /var/lib/docker/devicemapper/test/shared /var/lib/docker/devicemapper/test/shared rw,relatime master:1 shared:44 - ext4 /dev/mapper/ssd-root rw,seclabel,data=ordered
+`,
+		},
+	}
+	for _, test := range errorTests {
+		tempDir, filename, err := writeFile(test.content)
+		if err != nil {
+			t.Fatalf("cannot create temporary file: %v", err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		_, err = isShared("/", filename)
+		if err == nil {
+			t.Errorf("test %q: expected error, got none", test.name)
 		}
 	}
 }
