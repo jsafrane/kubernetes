@@ -238,6 +238,7 @@ func udevadmChangeToDrive(drivePath string) error {
 	}
 
 	// Call "udevadm trigger --action=change --property-match=DEVNAME=/dev/sd..."
+	// Execute it where kubelet lives, not it a mounter pod!
 	_, err = exec.New().Command(
 		"udevadm",
 		"trigger",

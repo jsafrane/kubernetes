@@ -45,7 +45,7 @@ var (
 
 func updateISCSIDiscoverydb(b iscsiDiskMounter, tp string) error {
 	if b.chap_discovery {
-		out, err := b.plugin.execCommand("iscsiadm", []string{"-m", "discoverydb", "-t", "sendtargets", "-p", tp, "-I", b.iface, "-o", "update", "-n", "discovery.sendtargets.auth.authmethod", "-v", "CHAP"})
+		out, err := b.exec.Run("iscsiadm", []string{"-m", "discoverydb", "-t", "sendtargets", "-p", tp, "-I", b.iface, "-o", "update", "-n", "discovery.sendtargets.auth.authmethod", "-v", "CHAP"})
 		if err != nil {
 			return fmt.Errorf("iscsi: failed to update discoverydb with CHAP, output: %v", string(out))
 		}
@@ -53,7 +53,7 @@ func updateISCSIDiscoverydb(b iscsiDiskMounter, tp string) error {
 		for _, k := range chap_st {
 			v := b.secret[k]
 			if len(v) > 0 {
-				out, err := b.plugin.execCommand("iscsiadm", []string{"-m", "discoverydb", "-t", "sendtargets", "-p", tp, "-I", b.iface, "-o", "update", "-n", k, "-v", v})
+				out, err := b.exec.Run("iscsiadm", []string{"-m", "discoverydb", "-t", "sendtargets", "-p", tp, "-I", b.iface, "-o", "update", "-n", k, "-v", v})
 				if err != nil {
 					return fmt.Errorf("iscsi: failed to update discoverydb key %q with value %q error: %v", k, v, string(out))
 				}
@@ -65,7 +65,7 @@ func updateISCSIDiscoverydb(b iscsiDiskMounter, tp string) error {
 
 func updateISCSINode(b iscsiDiskMounter, tp string) error {
 	if b.chap_session {
-		out, err := b.plugin.execCommand("iscsiadm", []string{"-m", "node", "-p", tp, "-T", b.iqn, "-I", b.iface, "-o", "update", "-n", "node.session.auth.authmethod", "-v", "CHAP"})
+		out, err := b.exec.Run("iscsiadm", []string{"-m", "node", "-p", tp, "-T", b.iqn, "-I", b.iface, "-o", "update", "-n", "node.session.auth.authmethod", "-v", "CHAP"})
 		if err != nil {
 			return fmt.Errorf("iscsi: failed to update node with CHAP, output: %v", string(out))
 		}
@@ -73,7 +73,7 @@ func updateISCSINode(b iscsiDiskMounter, tp string) error {
 		for _, k := range chap_sess {
 			v := b.secret[k]
 			if len(v) > 0 {
-				out, err := b.plugin.execCommand("iscsiadm", []string{"-m", "node", "-p", tp, "-T", b.iqn, "-I", b.iface, "-o", "update", "-n", k, "-v", v})
+				out, err := b.exec.Run("iscsiadm", []string{"-m", "node", "-p", tp, "-T", b.iqn, "-I", b.iface, "-o", "update", "-n", k, "-v", v})
 				if err != nil {
 					return fmt.Errorf("iscsi: failed to update node session key %q with value %q error: %v", k, v, string(out))
 				}
@@ -159,7 +159,7 @@ func (util *ISCSIUtil) AttachDisk(b iscsiDiskMounter) error {
 	var iscsiTransport string
 	var lastErr error
 
-	out, err := b.plugin.execCommand("iscsiadm", []string{"-m", "iface", "-I", b.iface, "-o", "show"})
+	out, err := b.exec.Run("iscsiadm", []string{"-m", "iface", "-I", b.iface, "-o", "show"})
 	if err != nil {
 		glog.Errorf("iscsi: could not read iface %s error: %s", b.iface, string(out))
 		return err
@@ -171,7 +171,7 @@ func (util *ISCSIUtil) AttachDisk(b iscsiDiskMounter) error {
 	for _, tp := range bkpPortal {
 		// Rescan sessions to discover newly mapped LUNs. Do not specify the interface when rescanning
 		// to avoid establishing additional sessions to the same target.
-		out, err := b.plugin.execCommand("iscsiadm", []string{"-m", "node", "-p", tp, "-T", b.iqn, "-R"})
+		out, err := b.exec.Run("iscsiadm", []string{"-m", "node", "-p", tp, "-T", b.iqn, "-R"})
 		if err != nil {
 			glog.Errorf("iscsi: failed to rescan session with error: %s (%v)", string(out), err)
 		}
@@ -187,17 +187,17 @@ func (util *ISCSIUtil) AttachDisk(b iscsiDiskMounter) error {
 		exist := waitForPathToExist(devicePath, 1, iscsiTransport)
 		if exist == false {
 			// build discoverydb and discover iscsi target
-			b.plugin.execCommand("iscsiadm", []string{"-m", "discoverydb", "-t", "sendtargets", "-p", tp, "-I", b.iface, "-o", "new"})
+			b.exec.Run("iscsiadm", []string{"-m", "discoverydb", "-t", "sendtargets", "-p", tp, "-I", b.iface, "-o", "new"})
 			// update discoverydb with CHAP secret
 			err = updateISCSIDiscoverydb(b, tp)
 			if err != nil {
 				lastErr = fmt.Errorf("iscsi: failed to update discoverydb to portal %s error: %v", tp, err)
 				continue
 			}
-			out, err := b.plugin.execCommand("iscsiadm", []string{"-m", "discoverydb", "-t", "sendtargets", "-p", tp, "-I", b.iface, "--discover"})
+			out, err := b.exec.Run("iscsiadm", []string{"-m", "discoverydb", "-t", "sendtargets", "-p", tp, "-I", b.iface, "--discover"})
 			if err != nil {
 				// delete discoverydb record
-				b.plugin.execCommand("iscsiadm", []string{"-m", "discoverydb", "-t", "sendtargets", "-p", tp, "-I", b.iface, "-o", "delete"})
+				b.exec.Run("iscsiadm", []string{"-m", "discoverydb", "-t", "sendtargets", "-p", tp, "-I", b.iface, "-o", "delete"})
 				lastErr = fmt.Errorf("iscsi: failed to sendtargets to portal %s output: %s, err %v", tp, string(out), err)
 				continue
 			}
@@ -208,10 +208,10 @@ func (util *ISCSIUtil) AttachDisk(b iscsiDiskMounter) error {
 				continue
 			}
 			// login to iscsi target
-			out, err = b.plugin.execCommand("iscsiadm", []string{"-m", "node", "-p", tp, "-T", b.iqn, "-I", b.iface, "--login"})
+			out, err = b.exec.Run("iscsiadm", []string{"-m", "node", "-p", tp, "-T", b.iqn, "-I", b.iface, "--login"})
 			if err != nil {
 				// delete the node record from database
-				b.plugin.execCommand("iscsiadm", []string{"-m", "node", "-p", tp, "-I", b.iface, "-T", b.iqn, "-o", "delete"})
+				b.exec.Run("iscsiadm", []string{"-m", "node", "-p", tp, "-I", b.iface, "-T", b.iqn, "-o", "delete"})
 				lastErr = fmt.Errorf("iscsi: failed to attach disk: Error: %s (%v)", string(out), err)
 				continue
 			}
@@ -302,25 +302,25 @@ func (util *ISCSIUtil) DetachDisk(c iscsiDiskUnmounter, mntPath string) error {
 			iface, found := extractIface(mntPath)
 			if found {
 				glog.Infof("iscsi: log out target %s iqn %s iface %s", portal, iqn, iface)
-				out, err := c.plugin.execCommand("iscsiadm", []string{"-m", "node", "-p", portal, "-T", iqn, "-I", iface, "--logout"})
+				out, err := c.exec.Run("iscsiadm", []string{"-m", "node", "-p", portal, "-T", iqn, "-I", iface, "--logout"})
 				if err != nil {
 					glog.Errorf("iscsi: failed to detach disk Error: %s", string(out))
 				}
 				// Delete the node record
 				glog.Infof("iscsi: delete node record target %s iqn %s", portal, iqn)
-				out, err = c.plugin.execCommand("iscsiadm", []string{"-m", "node", "-p", portal, "-T", iqn, "-I", iface, "-o", "delete"})
+				out, err = c.exec.Run("iscsiadm", []string{"-m", "node", "-p", portal, "-T", iqn, "-I", iface, "-o", "delete"})
 				if err != nil {
 					glog.Errorf("iscsi: failed to delete node record Error: %s", string(out))
 				}
 			} else {
 				glog.Infof("iscsi: log out target %s iqn %s", portal, iqn)
-				out, err := c.plugin.execCommand("iscsiadm", []string{"-m", "node", "-p", portal, "-T", iqn, "--logout"})
+				out, err := c.exec.Run("iscsiadm", []string{"-m", "node", "-p", portal, "-T", iqn, "--logout"})
 				if err != nil {
 					glog.Errorf("iscsi: failed to detach disk Error: %s", string(out))
 				}
 				// Delete the node record
 				glog.Infof("iscsi: delete node record target %s iqn %s", portal, iqn)
-				out, err = c.plugin.execCommand("iscsiadm", []string{"-m", "node", "-p", portal, "-T", iqn, "-o", "delete"})
+				out, err = c.exec.Run("iscsiadm", []string{"-m", "node", "-p", portal, "-T", iqn, "-o", "delete"})
 				if err != nil {
 					glog.Errorf("iscsi: failed to delete node record Error: %s", string(out))
 				}

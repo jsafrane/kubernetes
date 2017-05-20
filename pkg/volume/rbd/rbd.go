@@ -26,7 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
-	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/util/strings"
 	"k8s.io/kubernetes/pkg/volume"
@@ -36,12 +35,11 @@ import (
 
 // This is the primary entrypoint for volume plugins.
 func ProbeVolumePlugins() []volume.VolumePlugin {
-	return []volume.VolumePlugin{&rbdPlugin{nil, exec.New()}}
+	return []volume.VolumePlugin{&rbdPlugin{nil}}
 }
 
 type rbdPlugin struct {
 	host volume.VolumeHost
-	exe  exec.Interface
 }
 
 var _ volume.VolumePlugin = &rbdPlugin{}
@@ -115,7 +113,7 @@ func (plugin *rbdPlugin) NewMounter(spec *volume.Spec, pod *v1.Pod, _ volume.Vol
 	}
 
 	// Inject real implementations here, test through the internal function.
-	return plugin.newMounterInternal(spec, pod.UID, &RBDUtil{}, plugin.host.GetMounter(plugin.GetPluginName()), secret)
+	return plugin.newMounterInternal(spec, pod.UID, &RBDUtil{}, plugin.host.GetMounter(plugin.GetPluginName()), plugin.host.GetExec(plugin.GetPluginName()), secret)
 }
 
 func (plugin *rbdPlugin) getRBDVolumeSource(spec *volume.Spec) (*v1.RBDVolumeSource, bool) {
@@ -128,7 +126,7 @@ func (plugin *rbdPlugin) getRBDVolumeSource(spec *volume.Spec) (*v1.RBDVolumeSou
 	}
 }
 
-func (plugin *rbdPlugin) newMounterInternal(spec *volume.Spec, podUID types.UID, manager diskManager, mounter mount.Interface, secret string) (volume.Mounter, error) {
+func (plugin *rbdPlugin) newMounterInternal(spec *volume.Spec, podUID types.UID, manager diskManager, mounter mount.Interface, exec mount.Exec, secret string) (volume.Mounter, error) {
 	source, readOnly := plugin.getRBDVolumeSource(spec)
 	pool := source.RBDPool
 	id := source.RadosUser
@@ -142,7 +140,8 @@ func (plugin *rbdPlugin) newMounterInternal(spec *volume.Spec, podUID types.UID,
 			Pool:     pool,
 			ReadOnly: readOnly,
 			manager:  manager,
-			mounter:  volumehelper.NewSafeFormatAndMountFromHost(plugin.GetPluginName(), plugin.host),
+			mounter:  &mount.SafeFormatAndMount{Interface: mounter, Exec: exec},
+			exec:     exec,
 			plugin:   plugin,
 		},
 		Mon:          source.CephMonitors,
@@ -156,10 +155,10 @@ func (plugin *rbdPlugin) newMounterInternal(spec *volume.Spec, podUID types.UID,
 
 func (plugin *rbdPlugin) NewUnmounter(volName string, podUID types.UID) (volume.Unmounter, error) {
 	// Inject real implementations here, test through the internal function.
-	return plugin.newUnmounterInternal(volName, podUID, &RBDUtil{}, plugin.host.GetMounter(plugin.GetPluginName()))
+	return plugin.newUnmounterInternal(volName, podUID, &RBDUtil{}, plugin.host.GetMounter(plugin.GetPluginName()), plugin.host.GetExec(plugin.GetPluginName()))
 }
 
-func (plugin *rbdPlugin) newUnmounterInternal(volName string, podUID types.UID, manager diskManager, mounter mount.Interface) (volume.Unmounter, error) {
+func (plugin *rbdPlugin) newUnmounterInternal(volName string, podUID types.UID, manager diskManager, mounter mount.Interface, exec mount.Exec) (volume.Unmounter, error) {
 	return &rbdUnmounter{
 		rbdMounter: &rbdMounter{
 			rbd: &rbd{
@@ -167,6 +166,7 @@ func (plugin *rbdPlugin) newUnmounterInternal(volName string, podUID types.UID, 
 				volName: volName,
 				manager: manager,
 				mounter: volumehelper.NewSafeFormatAndMountFromHost(plugin.GetPluginName(), plugin.host),
+				exec:    exec,
 				plugin:  plugin,
 			},
 			Mon: make([]string, 0),
@@ -225,6 +225,8 @@ func (plugin *rbdPlugin) newDeleterInternal(spec *volume.Spec, admin, secret str
 				Pool:    spec.PersistentVolume.Spec.RBD.RBDPool,
 				manager: manager,
 				plugin:  plugin,
+				mounter: &mount.SafeFormatAndMount{Interface: plugin.host.GetMounter(plugin.GetPluginName())},
+				exec:    plugin.host.GetExec(plugin.GetPluginName()),
 			},
 			Mon:         spec.PersistentVolume.Spec.RBD.CephMonitors,
 			adminId:     admin,
@@ -242,6 +244,8 @@ func (plugin *rbdPlugin) newProvisionerInternal(options volume.VolumeOptions, ma
 			rbd: &rbd{
 				manager: manager,
 				plugin:  plugin,
+				mounter: &mount.SafeFormatAndMount{Interface: plugin.host.GetMounter(plugin.GetPluginName())},
+				exec:    plugin.host.GetExec(plugin.GetPluginName()),
 			},
 		},
 		options: options,
@@ -356,6 +360,7 @@ type rbd struct {
 	ReadOnly bool
 	plugin   *rbdPlugin
 	mounter  *mount.SafeFormatAndMount
+	exec     mount.Exec
 	// Utility interface that provides API calls to the provider to attach/detach disks.
 	manager diskManager
 	volume.MetricsNil
@@ -433,11 +438,6 @@ func (c *rbdUnmounter) TearDownAt(dir string) error {
 	return diskTearDown(c.manager, *c, dir, c.mounter)
 }
 
-func (plugin *rbdPlugin) execCommand(command string, args []string) ([]byte, error) {
-	cmd := plugin.exe.Command(command, args...)
-	return cmd.CombinedOutput()
-}
-
 func getVolumeSource(
 	spec *volume.Spec) (*v1.RBDVolumeSource, bool, error) {
 	if spec.Volume != nil && spec.Volume.RBD != nil {
@@ -453,8 +453,8 @@ func getVolumeSource(
 func parsePodSecret(pod *v1.Pod, secretName string, kubeClient clientset.Interface) (string, error) {
 	secret, err := volutil.GetSecretForPod(pod, secretName, kubeClient)
 	if err != nil {
-		glog.Errorf("failed to get secret from [%q/%q]", pod.Namespace, secretName)
-		return "", fmt.Errorf("failed to get secret from [%q/%q]", pod.Namespace, secretName)
+		glog.Errorf("failed to get secret from [%q/%q]: %v", pod.Namespace, secretName, err)
+		return "", fmt.Errorf("failed to get secret from [%q/%q]: %v", pod.Namespace, secretName, err)
 	}
 	return parseSecretMap(secret)
 }
@@ -462,8 +462,8 @@ func parsePodSecret(pod *v1.Pod, secretName string, kubeClient clientset.Interfa
 func parsePVSecret(namespace, secretName string, kubeClient clientset.Interface) (string, error) {
 	secret, err := volutil.GetSecretForPV(namespace, secretName, rbdPluginName, kubeClient)
 	if err != nil {
-		glog.Errorf("failed to get secret from [%q/%q]", namespace, secretName)
-		return "", fmt.Errorf("failed to get secret from [%q/%q]", namespace, secretName)
+		glog.Errorf("failed to get secret from [%q/%q]: %v", namespace, secretName, err)
+		return "", fmt.Errorf("failed to get secret from [%q/%q]: %v", namespace, secretName, err)
 	}
 	return parseSecretMap(secret)
 }

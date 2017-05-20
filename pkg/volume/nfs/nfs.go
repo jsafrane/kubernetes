@@ -25,7 +25,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/api/v1"
-	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/util/strings"
 	"k8s.io/kubernetes/pkg/volume"
@@ -192,18 +191,18 @@ func (nfsVolume *nfs) GetPath() string {
 // to mount the volume are available on the underlying node.
 // If not, it returns an error
 func (nfsMounter *nfsMounter) CanMount() error {
-	exe := exec.New()
+	exec := nfsMounter.plugin.host.GetExec(nfsMounter.plugin.GetPluginName())
 	switch runtime.GOOS {
 	case "linux":
-		if _, err := exe.Command("/bin/ls", "/sbin/mount.nfs").CombinedOutput(); err != nil {
+		if _, err := exec.Run("/bin/ls", []string{"/sbin/mount.nfs"}); err != nil {
 			return fmt.Errorf("Required binary /sbin/mount.nfs is missing")
 		}
-		if _, err := exe.Command("/bin/ls", "/sbin/mount.nfs4").CombinedOutput(); err != nil {
+		if _, err := exec.Run("/bin/ls", []string{"/sbin/mount.nfs4"}); err != nil {
 			return fmt.Errorf("Required binary /sbin/mount.nfs4 is missing")
 		}
 		return nil
 	case "darwin":
-		if _, err := exe.Command("/bin/ls", "/sbin/mount_nfs").CombinedOutput(); err != nil {
+		if _, err := exec.Run("/bin/ls", []string{"/sbin/mount_nfs"}); err != nil {
 			return fmt.Errorf("Required binary /sbin/mount_nfs is missing")
 		}
 	}

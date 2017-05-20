@@ -20,16 +20,15 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
-	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/golang/glog"
-	"k8s.io/kubernetes/pkg/util/exec"
 )
 
 type ioHandler interface {
 	ReadDir(dirname string) ([]os.FileInfo, error)
+	ReadFile(filename string) ([]byte, error)
 	WriteFile(filename string, data []byte, perm os.FileMode) error
 	Readlink(name string) (string, error)
 }
@@ -44,6 +43,9 @@ func (handler *osIOHandler) WriteFile(filename string, data []byte, perm os.File
 }
 func (handler *osIOHandler) Readlink(name string) (string, error) {
 	return os.Readlink(name)
+}
+func (handler *osIOHandler) ReadFile(filename string) ([]byte, error) {
+	return ioutil.ReadFile(filename)
 }
 
 // exclude those used by azure as resource and OS root in /dev/disk/azure
@@ -66,14 +68,14 @@ func listAzureDiskPath(io ioHandler) []string {
 
 // given a LUN find the VHD device path like /dev/sdd
 // exclude those disks used by Azure resources and OS root
-func findDiskByLun(lun int, io ioHandler, exe exec.Interface) (string, error) {
+func findDiskByLun(lun int, io ioHandler) (string, error) {
 	azureDisks := listAzureDiskPath(io)
-	return findDiskByLunWithConstraint(lun, io, exe, azureDisks)
+	return findDiskByLunWithConstraint(lun, io, azureDisks)
 }
 
 // look for device /dev/sdX and validate it is a VHD
 // return empty string if no disk is found
-func findDiskByLunWithConstraint(lun int, io ioHandler, exe exec.Interface, azureDisks []string) (string, error) {
+func findDiskByLunWithConstraint(lun int, io ioHandler, azureDisks []string) (string, error) {
 	var err error
 	sys_path := "/sys/bus/scsi/devices"
 	if dirs, err := io.ReadDir(sys_path); err == nil {
@@ -95,16 +97,27 @@ func findDiskByLunWithConstraint(lun int, io ioHandler, exe exec.Interface, azur
 			if lun == l {
 				// find the matching LUN
 				// read vendor and model to ensure it is a VHD disk
-				vendor := path.Join(sys_path, name, "vendor")
-				model := path.Join(sys_path, name, "model")
-				out, err := exe.Command("cat", vendor, model).CombinedOutput()
+				vendorFile := path.Join(sys_path, name, "vendor")
+				vendorBytes, err := io.ReadFile(vendorFile)
 				if err != nil {
-					glog.Errorf("failed to cat device vendor and model, err: %v", err)
+					glog.Errorf("failed to read device vendor, err: %v", err)
 					continue
 				}
-				matched, err := regexp.MatchString("^MSFT[ ]{0,}\nVIRTUAL DISK[ ]{0,}\n$", strings.ToUpper(string(out)))
-				if err != nil || !matched {
-					glog.V(4).Infof("doesn't match VHD, output %v, error %v", string(out), err)
+				vendor := strings.TrimSpace(string(vendorBytes))
+				if strings.ToUpper(vendor) != "MSFT" {
+					glog.V(4).Infof("vendor doesn't match VHD, got %s", vendor)
+					continue
+				}
+
+				modelFile := path.Join(sys_path, name, "model")
+				modelBytes, err := io.ReadFile(modelFile)
+				if err != nil {
+					glog.Errorf("failed to read device model, err: %v", err)
+					continue
+				}
+				model := strings.TrimSpace(string(modelBytes))
+				if strings.ToUpper(model) != "VIRTUAL DISK" {
+					glog.V(4).Infof("model doesn't match VHD, got %s", model)
 					continue
 				}
 				// find a disk, validate name
