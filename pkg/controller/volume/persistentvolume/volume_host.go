@@ -86,3 +86,7 @@ func (adc *PersistentVolumeController) GetSecretFunc() func(namespace, name stri
 		return nil, fmt.Errorf("GetSecret unsupported in PersistentVolumeController")
 	}
 }
+
+func (adc *PersistentVolumeController) GetExec(pluginName string) mount.Exec {
+	return mount.NewOsExec()
+}

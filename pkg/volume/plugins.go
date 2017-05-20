@@ -232,6 +232,9 @@ type VolumeHost interface {
 
 	// Returns a function that returns a secret.
 	GetSecretFunc() func(namespace, name string) (*v1.Secret, error)
+
+	// Returns an interface that should be used to execute mount utilities
+	GetExec(pluginName string) mount.Exec
 }
 
 // VolumePluginMgr tracks registered plugins.
