@@ -28,7 +28,6 @@ import (
 	utiltesting "k8s.io/client-go/util/testing"
 	api "k8s.io/kubernetes/pkg/api/v1"
 	fakeclient "k8s.io/kubernetes/pkg/client/clientset_generated/clientset/fake"
-	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume"
 	volumetest "k8s.io/kubernetes/pkg/volume/testing"
 )
@@ -135,8 +134,6 @@ func TestVolumeMounterUnmounter(t *testing.T) {
 	if !ok {
 		t.Errorf("Cannot assert plugin to be type sioPlugin")
 	}
-
-	sioPlug.mounter = &mount.FakeMounter{}
 
 	vol := &api.Volume{
 		Name: testSioVolName,
