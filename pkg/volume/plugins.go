@@ -241,6 +241,8 @@ type VolumeHost interface {
 type VolumePluginMgr struct {
 	mutex   sync.Mutex
 	plugins map[string]VolumePlugin
+	// mountPods is a cache of mount pods for given plugin name
+	mountPods map[string]map[types.UID]*v1.Pod
 }
 
 // Spec is an internal representation of a volume.  All API volume types translate to Spec.
@@ -531,6 +533,71 @@ func (pm *VolumePluginMgr) FindAttachablePluginByName(name string) (AttachableVo
 		return attachablePlugin, nil
 	}
 	return nil, nil
+}
+
+func (pm *VolumePluginMgr) AddMountPod(pod *v1.Pod) {
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
+
+	// Remove the old version of the pod from cache just in case a label was
+	// removed from the pod or the pod is not running.
+	pm.deleteMountPodLocked(pod)
+
+	if pod.Status.Phase != v1.PodRunning {
+		glog.V(5).Infof("AddMountPod skipping pod %s/%s: it's %s", pod.Namespace, pod.Name, pod.Status.Phase)
+		return
+	}
+
+	// Find all volume plugins that are handled by this pod
+	for pluginName, _ := range pm.plugins {
+		if pod.Labels["mount."+pluginName] == "true" {
+			pods := pm.mountPods[pluginName]
+			if pods == nil {
+				pods = map[types.UID]*v1.Pod{}
+			}
+			pods[pod.UID] = pod
+			if pm.mountPods == nil {
+				pm.mountPods = map[string]map[types.UID]*v1.Pod{}
+			}
+			pm.mountPods[pluginName] = pods
+			glog.V(5).Infof("AddMountPod: added %s/%s for plugin %s", pod.Namespace, pod.Name, pluginName)
+		}
+	}
+}
+
+func (pm *VolumePluginMgr) deleteMountPodLocked(pod *v1.Pod) {
+	for pluginName, _ := range pm.plugins {
+		pods := pm.mountPods[pluginName]
+		if pods == nil {
+			continue
+		}
+		delete(pods, pod.UID)
+		pm.mountPods[pluginName] = pods
+	}
+}
+
+func (pm *VolumePluginMgr) DeleteMountPod(pod *v1.Pod) {
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
+	glog.V(5).Infof("DeleteMountPod: deleting %s/%s", pod.Namespace, pod.Name)
+	pm.deleteMountPodLocked(pod)
+}
+
+func (pm *VolumePluginMgr) GetMountPod(pluginName string) *v1.Pod {
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
+	pods := pm.mountPods[pluginName]
+	if pods == nil {
+		glog.V(5).Infof("GetMountPod: returned nil for %s", pluginName)
+		return nil
+	}
+	for _, pod := range pods {
+		// return a random pod
+		glog.V(5).Infof("GetMountPod: returned %s/%s for %s", pod.Namespace, pod.Name, pluginName)
+		return pod
+	}
+	glog.V(5).Infof("GetMountPod: returned nil for %s", pluginName)
+	return nil
 }
 
 // NewPersistentVolumeRecyclerPodTemplate creates a template for a recycler
