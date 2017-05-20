@@ -81,7 +81,7 @@ func (f *fakeVolumeHost) GetCloudProvider() cloudprovider.Interface {
 	return f.cloud
 }
 
-func (f *fakeVolumeHost) GetMounter() mount.Interface {
+func (f *fakeVolumeHost) GetMounter(pluginName string) mount.Interface {
 	return f.mounter
 }
 
