@@ -1050,6 +1050,9 @@ func (kl *Kubelet) setupDataDirs() error {
 	if err := os.MkdirAll(kl.getRootDir(), 0750); err != nil {
 		return fmt.Errorf("error creating root directory: %v", err)
 	}
+	if err := kl.mounter.MakeShared(kl.getRootDir()); err != nil {
+		return fmt.Errorf("error configuring root directory: %v", err)
+	}
 	if err := os.MkdirAll(kl.getPodsDir(), 0750); err != nil {
 		return fmt.Errorf("error creating pods directory: %v", err)
 	}
