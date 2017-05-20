@@ -1872,6 +1872,9 @@ func (kl *Kubelet) HandlePodAdditions(pods []*v1.Pod) {
 		// not exist in the pod manager, it means that it has been deleted in
 		// the apiserver and no action (other than cleanup) is required.
 		kl.podManager.AddPod(pod)
+		if kl.kubeletConfiguration.ExperimentalMountNamespace != "" && kl.kubeletConfiguration.ExperimentalMountNamespace == pod.Namespace {
+			kl.volumePluginMgr.AddMountPod(pod)
+		}
 
 		if kubepod.IsMirrorPod(pod) {
 			kl.handleMirrorPod(pod, start)
@@ -1904,6 +1907,10 @@ func (kl *Kubelet) HandlePodUpdates(pods []*v1.Pod) {
 	start := kl.clock.Now()
 	for _, pod := range pods {
 		kl.podManager.UpdatePod(pod)
+		if kl.kubeletConfiguration.ExperimentalMountNamespace != "" && kl.kubeletConfiguration.ExperimentalMountNamespace == pod.Namespace {
+			kl.volumePluginMgr.AddMountPod(pod)
+		}
+
 		if kubepod.IsMirrorPod(pod) {
 			kl.handleMirrorPod(pod, start)
 			continue
@@ -1921,6 +1928,10 @@ func (kl *Kubelet) HandlePodRemoves(pods []*v1.Pod) {
 	start := kl.clock.Now()
 	for _, pod := range pods {
 		kl.podManager.DeletePod(pod)
+		if kl.kubeletConfiguration.ExperimentalMountNamespace != "" && kl.kubeletConfiguration.ExperimentalMountNamespace == pod.Namespace {
+			kl.volumePluginMgr.DeleteMountPod(pod)
+		}
+
 		if kubepod.IsMirrorPod(pod) {
 			kl.handleMirrorPod(pod, start)
 			continue
@@ -1941,6 +1952,9 @@ func (kl *Kubelet) HandlePodReconcile(pods []*v1.Pod) {
 		// Update the pod in pod manager, status manager will do periodically reconcile according
 		// to the pod manager.
 		kl.podManager.UpdatePod(pod)
+		if kl.kubeletConfiguration.ExperimentalMountNamespace != "" && kl.kubeletConfiguration.ExperimentalMountNamespace == pod.Namespace {
+			kl.volumePluginMgr.AddMountPod(pod)
+		}
 
 		// After an evicted pod is synced, all dead containers in the pod can be removed.
 		if eviction.PodIsEvicted(pod.Status) {
