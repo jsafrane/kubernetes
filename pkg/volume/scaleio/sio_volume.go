@@ -344,7 +344,7 @@ func (v *sioVolume) setSioMgr() error {
 			return err
 		}
 
-		mgr, err := newSioMgr(configData)
+		mgr, err := newSioMgr(configData, v.plugin.host.GetExec(v.plugin.GetPluginName()))
 		if err != nil {
 			glog.Error(log("failed to reset sio manager: %v", err))
 			return err
@@ -376,7 +376,7 @@ func (v *sioVolume) resetSioMgr() error {
 			return err
 		}
 
-		mgr, err := newSioMgr(configData)
+		mgr, err := newSioMgr(configData, v.plugin.host.GetExec(v.plugin.GetPluginName()))
 		if err != nil {
 			glog.Error(log("failed to reset scaleio mgr: %v", err))
 			return err
@@ -410,7 +410,7 @@ func (v *sioVolume) setSioMgrFromConfig() error {
 			return err
 		}
 
-		mgr, err := newSioMgr(data)
+		mgr, err := newSioMgr(data, v.plugin.host.GetExec(v.plugin.GetPluginName()))
 		if err != nil {
 			glog.Error(log("failed while setting scaleio mgr from config: %v", err))
 			return err
@@ -439,7 +439,7 @@ func (v *sioVolume) setSioMgrFromSpec() error {
 			return err
 		}
 
-		mgr, err := newSioMgr(configData)
+		mgr, err := newSioMgr(configData, v.plugin.host.GetExec(v.plugin.GetPluginName()))
 		if err != nil {
 			glog.Error(log("failed to reset sio manager: %v", err))
 			return err
