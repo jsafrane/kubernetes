@@ -4482,6 +4482,207 @@ func TestValidatePod(t *testing.T) {
 	}
 }
 
+func TestValidatePodWithMountPropagation(t *testing.T) {
+	capabilities.SetForTests(capabilities.Capabilities{
+		AllowPrivileged: true,
+	})
+	defer func() {
+		capabilities.SetForTests(capabilities.Capabilities{
+			AllowPrivileged: false,
+		})
+	}()
+
+	validMountPodSpec := api.PodSpec{
+		RestartPolicy: api.RestartPolicyAlways,
+		DNSPolicy:     api.DNSClusterFirst,
+		Containers: []api.Container{
+			{
+				Name:  "unprivileged",
+				Image: "image", ImagePullPolicy: "IfNotPresent", TerminationMessagePolicy: "File",
+				VolumeMounts: []api.VolumeMount{
+					{
+						Name:      "hostpath1",
+						MountPath: "/mnt/1",
+					},
+					{
+						Name:      "hostpath2",
+						MountPath: "/mnt/2",
+					},
+					{
+						Name:      "hostpath3",
+						MountPath: "/mnt/3",
+					},
+					{
+						Name:      "nfs",
+						MountPath: "/mnt/4",
+					},
+				},
+			},
+			{
+				Name:  "privileged",
+				Image: "image", ImagePullPolicy: "IfNotPresent", TerminationMessagePolicy: "File",
+				VolumeMounts: []api.VolumeMount{
+					{
+						Name:      "hostpath1",
+						MountPath: "/mnt/1",
+					},
+					{
+						Name:      "hostpath2",
+						MountPath: "/mnt/2",
+					},
+					{
+						Name:      "hostpath3",
+						MountPath: "/mnt/3",
+					},
+					{
+						Name:      "nfs",
+						MountPath: "/mnt/4",
+					},
+				},
+				SecurityContext: fakeValidSecurityContext(true),
+			},
+		},
+		Volumes: []api.Volume{
+			{
+				Name: "hostpath1",
+				VolumeSource: api.VolumeSource{
+					HostPath: &api.HostPathVolumeSource{
+						Path: "/mnt/1",
+					},
+				},
+			},
+			{
+				Name: "hostpath2",
+				VolumeSource: api.VolumeSource{
+					HostPath: &api.HostPathVolumeSource{
+						Path: "/mnt/2",
+					},
+				},
+			},
+			{
+				Name: "hostpath3",
+				VolumeSource: api.VolumeSource{
+					HostPath: &api.HostPathVolumeSource{
+						Path: "/mnt/3",
+					},
+				},
+			},
+			{
+				Name: "nfs",
+				VolumeSource: api.VolumeSource{
+					NFS: &api.NFSVolumeSource{
+						Server: "192.168.0.1",
+						Path:   "/",
+					},
+				},
+			},
+		},
+	}
+	successCases := []api.Pod{
+		{ // empty MountPropagationAnnotation is valid
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "valid-empty-propagation", Namespace: "ns",
+				Annotations: map[string]string{api.MountPropagationAnnotation: ""},
+			},
+			Spec: validMountPodSpec,
+		},
+		{ // HostPath in non-privileged container can be private and slave
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "valid-unprivileged-propagation", Namespace: "ns",
+				Annotations: map[string]string{api.MountPropagationAnnotation: `{"unprivileged": {"hostpath1": "private", "hostpath2": "rslave"}}`},
+			},
+			Spec: validMountPodSpec,
+		},
+		{ // HostPath in privileged container can be private and rslave and shared
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "valid-unprivileged-propagation", Namespace: "ns",
+				Annotations: map[string]string{api.MountPropagationAnnotation: `{"privileged": {"hostpath1": "private", "hostpath2": "rslave", "hostpath3": "rshared"}}`},
+			},
+			Spec: validMountPodSpec,
+		},
+	}
+
+	for _, pod := range successCases {
+		if errs := ValidatePod(&pod); len(errs) != 0 {
+			t.Errorf("expected success: %v", errs)
+		}
+	}
+
+	errorCases := map[string]struct {
+		spec          api.Pod
+		expectedError string
+	}{
+		"bad json": {
+			expectedError: "cannot decode annotation volume.alpha.kubernetes.io/propagation to MountPropagationMap",
+			spec: api.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "1", Namespace: "ns",
+					Annotations: map[string]string{api.MountPropagationAnnotation: "!@#$%^&*()"},
+				},
+				Spec: validMountPodSpec,
+			},
+		},
+		"unknown propagation": {
+			expectedError: "unknown mount propagation xxx",
+			spec: api.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "1", Namespace: "ns",
+					Annotations: map[string]string{api.MountPropagationAnnotation: `{"unprivileged": {"hostpath1": "xxx"}}`},
+				},
+				Spec: validMountPodSpec,
+			},
+		},
+		"unknown container": {
+			expectedError: "container xxx does not exist",
+			spec: api.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "1", Namespace: "ns",
+					Annotations: map[string]string{api.MountPropagationAnnotation: `{"xxx": {"hostpath1": "private"}}`},
+				},
+				Spec: validMountPodSpec,
+			},
+		},
+		"unknown mount": {
+			expectedError: "mount xxx does not exists in container unprivileged",
+			spec: api.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "1", Namespace: "ns",
+					Annotations: map[string]string{api.MountPropagationAnnotation: `{"unprivileged": {"xxx": "private"}}`},
+				},
+				Spec: validMountPodSpec,
+			},
+		},
+		"unprivileged-rshared": {
+			expectedError: "mount hostpath1 in unprivileged container unprivileged can't be rshared",
+			spec: api.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "1", Namespace: "ns",
+					Annotations: map[string]string{api.MountPropagationAnnotation: `{"unprivileged": {"hostpath1": "rshared"}}`},
+				},
+				Spec: validMountPodSpec,
+			},
+		},
+		"propagate-nfs": {
+			expectedError: "invalid propagation of volume nfs: only hostPath volumes can have mount propagation",
+			spec: api.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "1", Namespace: "ns",
+					Annotations: map[string]string{api.MountPropagationAnnotation: `{"unprivileged": {"nfs": "private"}}`},
+				},
+				Spec: validMountPodSpec,
+			},
+		}}
+	for k, v := range errorCases {
+		if errs := ValidatePod(&v.spec); len(errs) == 0 {
+			t.Errorf("expected failure for %q", k)
+		} else if v.expectedError == "" {
+			t.Errorf("missing expectedError for %q, got %q", k, errs.ToAggregate().Error())
+		} else if actualError := errs.ToAggregate().Error(); !strings.Contains(actualError, v.expectedError) {
+			t.Errorf("expected error for %q to contain %q, got %q", k, v.expectedError, actualError)
+		}
+	}
+}
+
 func TestValidatePodWithDisabledAffinityInAnnotations(t *testing.T) {
 	validPodSpec := func(affinity *api.Affinity) api.PodSpec {
 		spec := api.PodSpec{

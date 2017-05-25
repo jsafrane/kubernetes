@@ -2261,6 +2261,24 @@ type PodStatusResult struct {
 	Status PodStatus
 }
 
+const (
+	// MountPropagationAnnotation defines propagation of VolumeMounts in a pod.
+	// In future, we will probably have "VolumeMount.Propagation
+	// MountPropagation" field. For alpha, we store it in pod annotation as JSON
+	// of map of maps to keep track what VolumeMount in what Container has which
+	// propagation, i.e. JSON-encoded
+	// map[<container.name>]map[<volumemount.name>]MountPropagation
+	MountPropagationAnnotation = "volume.alpha.kubernetes.io/propagation"
+)
+
+type MountPropagation string
+
+const (
+	MountPropagationPrivate MountPropagation = "private"
+	MountPropagationRSlave  MountPropagation = "rslave"
+	MountPropagationRShared MountPropagation = "rshared"
+)
+
 // +genclient=true
 
 // Pod is a collection of containers, used as either input (create, update) or as output (list, get).

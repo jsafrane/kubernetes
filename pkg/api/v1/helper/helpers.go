@@ -498,3 +498,23 @@ func PersistentVolumeClaimHasClass(claim *v1.PersistentVolumeClaim) bool {
 
 	return false
 }
+
+type MountPropagationMap map[string]map[string]v1.MountPropagation
+
+func GetPodPropagation(podAnnotations map[string]string) (MountPropagationMap, error) {
+	var out MountPropagationMap
+	ann, found := podAnnotations[api.MountPropagationAnnotation]
+	if !found {
+		// No propagation configured
+		return out, nil
+	}
+	if strings.TrimSpace(ann) == "" {
+		// Empty annotation is OK
+		return MountPropagationMap{}, nil
+	}
+	// Everything else must be json
+	if err := json.Unmarshal([]byte(ann), &out); err != nil {
+		return MountPropagationMap{}, fmt.Errorf("cannot decode annotation %s to MountPropagationMap: %v", api.MountPropagationAnnotation, err)
+	}
+	return out, nil
+}
