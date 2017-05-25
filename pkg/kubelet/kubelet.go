@@ -1039,6 +1039,9 @@ type Kubelet struct {
 	// dockerLegacyService contains some legacy methods for backward compatibility.
 	// It should be set only when docker is using non json-file logging driver.
 	dockerLegacyService dockershim.DockerLegacyService
+
+	// enableMountPropagation is experimental option to enable mount propagation
+	enableMountPropagation bool
 }
 
 // setupDataDirs creates:

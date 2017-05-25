@@ -107,7 +107,7 @@ func (kl *Kubelet) makeDevices(pod *v1.Pod, container *v1.Container) ([]kubecont
 }
 
 // makeMounts determines the mount points for the given container.
-func makeMounts(pod *v1.Pod, podDir string, container *v1.Container, hostName, hostDomain, podIP string, podVolumes kubecontainer.VolumeMap) ([]kubecontainer.Mount, error) {
+func makeMounts(pod *v1.Pod, podDir string, container *v1.Container, hostName, hostDomain, podIP string, podVolumes kubecontainer.VolumeMap, enableMountPropagation bool) ([]kubecontainer.Mount, error) {
 	// Kubernetes only mounts on /etc/hosts if :
 	// - container does not use hostNetwork and
 	// - container is not an infrastructure(pause) container
@@ -117,6 +117,12 @@ func makeMounts(pod *v1.Pod, podDir string, container *v1.Container, hostName, h
 	mountEtcHostsFile := (pod.Spec.SecurityContext == nil || !pod.Spec.HostNetwork) && len(podIP) > 0 && runtime.GOOS != "windows"
 	glog.V(3).Infof("container: %v/%v/%v podIP: %q creating hosts mount: %v", pod.Namespace, pod.Name, container.Name, podIP, mountEtcHostsFile)
 	mounts := []kubecontainer.Mount{}
+
+	propagations, err := v1helper.GetPodPropagation(pod.Annotations)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, mount := range container.VolumeMounts {
 		mountEtcHostsFile = mountEtcHostsFile && (mount.MountPath != etcHostsPath)
 		vol, ok := podVolumes[mount.Name]
@@ -177,12 +183,19 @@ func makeMounts(pod *v1.Pod, podDir string, container *v1.Container, hostName, h
 			}
 		}
 
+		propagation := v1.MountPropagationPrivate // private is default
+		if enableMountPropagation {
+			propagation = findPropagation(propagations, container, &mount)
+		}
+		glog.V(5).Infof("Pod %s/%s container %s mount %s has propagation %s", pod.Namespace, pod.Name, container.Name, mount.Name, propagation)
+
 		mounts = append(mounts, kubecontainer.Mount{
 			Name:           mount.Name,
 			ContainerPath:  containerPath,
 			HostPath:       hostPath,
 			ReadOnly:       mount.ReadOnly,
 			SELinuxRelabel: relabelVolume,
+			Propagation:    propagation,
 		})
 	}
 	if mountEtcHostsFile {
@@ -320,7 +333,8 @@ func (kl *Kubelet) GenerateRunContainerOptions(pod *v1.Pod, container *v1.Contai
 		return nil, false, err
 	}
 
-	opts.Mounts, err = makeMounts(pod, kl.getPodDir(pod.UID), container, hostname, hostDomainName, podIP, volumes)
+	// TODO: add a cmdline option to explicitly enable mount propagation
+	opts.Mounts, err = makeMounts(pod, kl.getPodDir(pod.UID), container, hostname, hostDomainName, podIP, volumes, true /* enableMountPropagation*/)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1656,4 +1670,19 @@ func (kl *Kubelet) hasHostMountPVC(pod *v1.Pod) bool {
 		}
 	}
 	return false
+}
+
+func findPropagation(propagations v1helper.MountPropagationMap, container *v1.Container, mount *v1.VolumeMount) v1.MountPropagation {
+	// TODO: check the real mount field
+	containerPropagations, found := propagations[container.Name]
+	if !found {
+		// Private is default
+		return v1.MountPropagationPrivate
+	}
+	mountPropagation, found := containerPropagations[mount.Name]
+	if !found {
+		// Private is default
+		return v1.MountPropagationPrivate
+	}
+	return mountPropagation
 }

@@ -43,6 +43,7 @@ import (
 
 func TestMakeMounts(t *testing.T) {
 	container := v1.Container{
+		Name: "container1",
 		VolumeMounts: []v1.VolumeMount{
 			{
 				MountPath: "/etc/hosts",
@@ -74,12 +75,17 @@ func TestMakeMounts(t *testing.T) {
 	}
 
 	pod := v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{
+				v1.MountPropagationAnnotation: `{"container1": {"disk": "rshared", "disk4": "rslave"}}`,
+			},
+		},
 		Spec: v1.PodSpec{
 			HostNetwork: true,
 		},
 	}
 
-	mounts, _ := makeMounts(&pod, "/pod", &container, "fakepodname", "", "", podVolumes)
+	mounts, _ := makeMounts(&pod, "/pod", &container, "fakepodname", "", "", podVolumes, true /* enableMountPropagation */)
 
 	expectedMounts := []kubecontainer.Mount{
 		{
@@ -88,6 +94,7 @@ func TestMakeMounts(t *testing.T) {
 			HostPath:       "/mnt/disk",
 			ReadOnly:       false,
 			SELinuxRelabel: false,
+			Propagation:    v1.MountPropagationRShared,
 		},
 		{
 			Name:           "disk",
@@ -95,6 +102,7 @@ func TestMakeMounts(t *testing.T) {
 			HostPath:       "/mnt/disk",
 			ReadOnly:       true,
 			SELinuxRelabel: false,
+			Propagation:    v1.MountPropagationRShared,
 		},
 		{
 			Name:           "disk4",
@@ -102,6 +110,7 @@ func TestMakeMounts(t *testing.T) {
 			HostPath:       "/mnt/host",
 			ReadOnly:       false,
 			SELinuxRelabel: false,
+			Propagation:    v1.MountPropagationRSlave,
 		},
 		{
 			Name:           "disk5",
@@ -109,6 +118,7 @@ func TestMakeMounts(t *testing.T) {
 			HostPath:       "/var/lib/kubelet/podID/volumes/empty/disk5",
 			ReadOnly:       false,
 			SELinuxRelabel: false,
+			Propagation:    v1.MountPropagationPrivate,
 		},
 	}
 	assert.Equal(t, expectedMounts, mounts, "mounts of container %+v", container)

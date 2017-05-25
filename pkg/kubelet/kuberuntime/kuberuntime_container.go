@@ -253,11 +253,24 @@ func (m *kubeGenericRuntimeManager) makeMounts(opts *kubecontainer.RunContainerO
 	for idx := range opts.Mounts {
 		v := opts.Mounts[idx]
 		selinuxRelabel := v.SELinuxRelabel && selinux.SELinuxEnabled()
+		var propagation runtimeapi.MountPropagation
+		switch v.Propagation {
+		case v1.MountPropagationPrivate:
+			propagation = runtimeapi.MountPropagation_PROPAGATION_PRIVATE
+		case v1.MountPropagationRSlave:
+			propagation = runtimeapi.MountPropagation_PROPAGATION_RSLAVE
+		case v1.MountPropagationRShared:
+			propagation = runtimeapi.MountPropagation_PROPAGATION_RSHARED
+		default:
+			glog.Errorf("Unknown mount propafation of container %q: %s", container.Name, v.Propagation)
+			propagation = runtimeapi.MountPropagation_PROPAGATION_PRIVATE
+		}
 		mount := &runtimeapi.Mount{
 			HostPath:       v.HostPath,
 			ContainerPath:  v.ContainerPath,
 			Readonly:       v.ReadOnly,
 			SelinuxRelabel: selinuxRelabel,
+			Propagation:    propagation,
 		}
 
 		volumeMounts = append(volumeMounts, mount)
