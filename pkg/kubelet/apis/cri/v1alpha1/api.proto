@@ -142,6 +142,12 @@ message PortMapping {
     string host_ip = 4;
 }
 
+enum MountPropagation {
+    PROPAGATION_PRIVATE = 0;
+    PROPAGATION_RSLAVE = 1;
+    PROPAGATION_RSHARED = 2;
+}
+
 // Mount specifies a host volume to mount into a container.
 message Mount {
     // Path of the mount within the container.
@@ -152,6 +158,8 @@ message Mount {
     bool readonly = 3;
     // If set, the mount needs SELinux relabeling.
     bool selinux_relabel = 4;
+    // Requested propagation mode
+    MountPropagation propagation = 5;
 }
 
 // NamespaceOption provides options for Linux namespaces.
@@ -984,7 +992,7 @@ message FsInfo {
     // filesystem.
     UInt64Value available_bytes = 4;
     // UsedBytes represents the bytes used for images on the filesystem.
-    // This may differ from the total bytes used on the filesystem and may not 
+    // This may differ from the total bytes used on the filesystem and may not
     // equal CapacityBytes - AvailableBytes.
     UInt64Value used_bytes = 5;
     // InodesCapacity represents the total inodes in the filesystem.
