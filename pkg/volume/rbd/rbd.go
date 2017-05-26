@@ -227,6 +227,7 @@ func (plugin *rbdPlugin) newDeleterInternal(spec *volume.Spec, admin, secret str
 				manager: manager,
 				plugin:  plugin,
 				mounter: &mount.SafeFormatAndMount{Interface: plugin.host.GetMounter(plugin.GetPluginName())},
+				exec:    plugin.host.GetExec(plugin.GetPluginName()),
 			},
 			Mon:         spec.PersistentVolume.Spec.RBD.CephMonitors,
 			adminId:     admin,
@@ -245,6 +246,7 @@ func (plugin *rbdPlugin) newProvisionerInternal(options volume.VolumeOptions, ma
 				manager: manager,
 				plugin:  plugin,
 				mounter: &mount.SafeFormatAndMount{Interface: plugin.host.GetMounter(plugin.GetPluginName())},
+				exec:    plugin.host.GetExec(plugin.GetPluginName()),
 			},
 		},
 		options: options,
@@ -453,8 +455,8 @@ func getVolumeSource(
 func parsePodSecret(pod *v1.Pod, secretName string, kubeClient clientset.Interface) (string, error) {
 	secret, err := volutil.GetSecretForPod(pod, secretName, kubeClient)
 	if err != nil {
-		glog.Errorf("failed to get secret from [%q/%q]", pod.Namespace, secretName)
-		return "", fmt.Errorf("failed to get secret from [%q/%q]", pod.Namespace, secretName)
+		glog.Errorf("failed to get secret from [%q/%q]: %v", pod.Namespace, secretName, err)
+		return "", fmt.Errorf("failed to get secret from [%q/%q]: %v", pod.Namespace, secretName, err)
 	}
 	return parseSecretMap(secret)
 }
@@ -462,8 +464,8 @@ func parsePodSecret(pod *v1.Pod, secretName string, kubeClient clientset.Interfa
 func parsePVSecret(namespace, secretName string, kubeClient clientset.Interface) (string, error) {
 	secret, err := volutil.GetSecretForPV(namespace, secretName, rbdPluginName, kubeClient)
 	if err != nil {
-		glog.Errorf("failed to get secret from [%q/%q]", namespace, secretName)
-		return "", fmt.Errorf("failed to get secret from [%q/%q]", namespace, secretName)
+		glog.Errorf("failed to get secret from [%q/%q]: %v", namespace, secretName, err)
+		return "", fmt.Errorf("failed to get secret from [%q/%q]: %v", namespace, secretName, err)
 	}
 	return parseSecretMap(secret)
 }

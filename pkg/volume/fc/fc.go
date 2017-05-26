@@ -23,7 +23,6 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/api/v1"
-	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/util/strings"
 	"k8s.io/kubernetes/pkg/volume"
@@ -32,12 +31,11 @@ import (
 
 // This is the primary entrypoint for volume plugins.
 func ProbeVolumePlugins() []volume.VolumePlugin {
-	return []volume.VolumePlugin{&fcPlugin{nil, exec.New()}}
+	return []volume.VolumePlugin{&fcPlugin{nil}}
 }
 
 type fcPlugin struct {
 	host volume.VolumeHost
-	exe  exec.Interface
 }
 
 var _ volume.VolumePlugin = &fcPlugin{}
@@ -143,11 +141,6 @@ func (plugin *fcPlugin) newUnmounterInternal(volName string, podUID types.UID, m
 		},
 		mounter: mounter,
 	}, nil
-}
-
-func (plugin *fcPlugin) execCommand(command string, args []string) ([]byte, error) {
-	cmd := plugin.exe.Command(command, args...)
-	return cmd.CombinedOutput()
 }
 
 func (plugin *fcPlugin) ConstructVolumeSpec(volumeName, mountPath string) (*volume.Spec, error) {
