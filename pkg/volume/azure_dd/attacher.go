@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/cloudprovider"
-	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/keymutex"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume"
@@ -167,12 +166,11 @@ func (attacher *azureDiskAttacher) WaitForAttach(spec *volume.Spec, lunStr strin
 		return "", fmt.Errorf("WaitForAttach: wrong lun %q, err: %v", lunStr, err)
 	}
 	scsiHostRescan(&osIOHandler{})
-	exe := exec.New()
 	devicePath := ""
 
 	err = wait.Poll(checkSleepDuration, timeout, func() (bool, error) {
 		glog.V(4).Infof("Checking Azure disk %q(lun %s) is attached.", volumeSource.DiskName, lunStr)
-		if devicePath, err = findDiskByLun(lun, &osIOHandler{}, exe); err == nil {
+		if devicePath, err = findDiskByLun(lun, &osIOHandler{}); err == nil {
 			if len(devicePath) == 0 {
 				glog.Warningf("cannot find attached Azure disk %q(lun %s) locally.", volumeSource.DiskName, lunStr)
 				return false, fmt.Errorf("cannot find attached Azure disk %q(lun %s) locally.", volumeSource.DiskName, lunStr)
