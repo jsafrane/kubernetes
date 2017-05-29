@@ -61,7 +61,7 @@ func (ctrl *PersistentVolumeController) GetCloudProvider() cloudprovider.Interfa
 	return ctrl.cloud
 }
 
-func (ctrl *PersistentVolumeController) GetMounter() mount.Interface {
+func (ctrl *PersistentVolumeController) GetMounter(pluginName string) mount.Interface {
 	return nil
 }
 
@@ -85,4 +85,8 @@ func (adc *PersistentVolumeController) GetSecretFunc() func(namespace, name stri
 	return func(_, _ string) (*v1.Secret, error) {
 		return nil, fmt.Errorf("GetSecret unsupported in PersistentVolumeController")
 	}
+}
+
+func (adc *PersistentVolumeController) GetExec(pluginName string) mount.Exec {
+	return mount.NewOsExec()
 }

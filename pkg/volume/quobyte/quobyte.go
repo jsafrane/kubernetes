@@ -28,7 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/api/v1"
-	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/util/strings"
 	"k8s.io/kubernetes/pkg/volume"
@@ -92,8 +91,9 @@ func (plugin *quobytePlugin) CanSupport(spec *volume.Spec) bool {
 	}
 
 	// If Quobyte is already mounted we don't need to check if the binary is installed
-	if mounter, err := plugin.newMounterInternal(spec, nil, plugin.host.GetMounter()); err == nil {
-		qm, _ := mounter.(*quobyteMounter)
+	mounter := plugin.host.GetMounter(plugin.GetPluginName())
+	if mnt, err := plugin.newMounterInternal(spec, nil, mounter); err == nil {
+		qm, _ := mnt.(*quobyteMounter)
 		pluginDir := plugin.host.GetPluginDir(strings.EscapeQualifiedNameForDisk(quobytePluginName))
 		if mounted, err := qm.pluginDirIsMounted(pluginDir); mounted && err == nil {
 			glog.V(4).Infof("quobyte: can support")
@@ -103,7 +103,8 @@ func (plugin *quobytePlugin) CanSupport(spec *volume.Spec) bool {
 		glog.V(4).Infof("quobyte: Error: %v", err)
 	}
 
-	if out, err := exec.New().Command("ls", "/sbin/mount.quobyte").CombinedOutput(); err == nil {
+	exec := plugin.host.GetExec(plugin.GetPluginName())
+	if out, err := exec.Run("ls", "/sbin/mount.quobyte"); err == nil {
 		glog.V(4).Infof("quobyte: can support: %s", string(out))
 		return true
 	}
@@ -155,7 +156,7 @@ func (plugin *quobytePlugin) ConstructVolumeSpec(volumeName, mountPath string) (
 }
 
 func (plugin *quobytePlugin) NewMounter(spec *volume.Spec, pod *v1.Pod, _ volume.VolumeOptions) (volume.Mounter, error) {
-	return plugin.newMounterInternal(spec, pod, plugin.host.GetMounter())
+	return plugin.newMounterInternal(spec, pod, plugin.host.GetMounter(plugin.GetPluginName()))
 }
 
 func (plugin *quobytePlugin) newMounterInternal(spec *volume.Spec, pod *v1.Pod, mounter mount.Interface) (volume.Mounter, error) {
@@ -181,7 +182,7 @@ func (plugin *quobytePlugin) newMounterInternal(spec *volume.Spec, pod *v1.Pod, 
 }
 
 func (plugin *quobytePlugin) NewUnmounter(volName string, podUID types.UID) (volume.Unmounter, error) {
-	return plugin.newUnmounterInternal(volName, podUID, plugin.host.GetMounter())
+	return plugin.newUnmounterInternal(volName, podUID, plugin.host.GetMounter(plugin.GetPluginName()))
 }
 
 func (plugin *quobytePlugin) newUnmounterInternal(volName string, podUID types.UID, mounter mount.Interface) (volume.Unmounter, error) {

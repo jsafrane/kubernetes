@@ -37,7 +37,6 @@ import (
 	"k8s.io/kubernetes/pkg/api/v1"
 	v1helper "k8s.io/kubernetes/pkg/api/v1/helper"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
-	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/util/strings"
 	"k8s.io/kubernetes/pkg/volume"
@@ -47,12 +46,11 @@ import (
 
 // ProbeVolumePlugins is the primary entrypoint for volume plugins.
 func ProbeVolumePlugins() []volume.VolumePlugin {
-	return []volume.VolumePlugin{&glusterfsPlugin{host: nil, exe: exec.New(), gidTable: make(map[string]*MinMaxAllocator)}}
+	return []volume.VolumePlugin{&glusterfsPlugin{host: nil, gidTable: make(map[string]*MinMaxAllocator)}}
 }
 
 type glusterfsPlugin struct {
 	host         volume.VolumeHost
-	exe          exec.Interface
 	gidTable     map[string]*MinMaxAllocator
 	gidTableLock sync.Mutex
 }
@@ -197,7 +195,7 @@ func (plugin *glusterfsPlugin) NewMounter(spec *volume.Spec, pod *v1.Pod, _ volu
 		}
 	}
 
-	return plugin.newMounterInternal(spec, ep, pod, plugin.host.GetMounter(), exec.New())
+	return plugin.newMounterInternal(spec, ep, pod, plugin.host.GetMounter(plugin.GetPluginName()))
 }
 
 func (plugin *glusterfsPlugin) getGlusterVolumeSource(spec *volume.Spec) (*v1.GlusterfsVolumeSource, bool) {
@@ -209,7 +207,7 @@ func (plugin *glusterfsPlugin) getGlusterVolumeSource(spec *volume.Spec) (*v1.Gl
 	return spec.PersistentVolume.Spec.Glusterfs, spec.ReadOnly
 }
 
-func (plugin *glusterfsPlugin) newMounterInternal(spec *volume.Spec, ep *v1.Endpoints, pod *v1.Pod, mounter mount.Interface, exe exec.Interface) (volume.Mounter, error) {
+func (plugin *glusterfsPlugin) newMounterInternal(spec *volume.Spec, ep *v1.Endpoints, pod *v1.Pod, mounter mount.Interface) (volume.Mounter, error) {
 	source, readOnly := plugin.getGlusterVolumeSource(spec)
 	return &glusterfsMounter{
 		glusterfs: &glusterfs{
@@ -221,13 +219,12 @@ func (plugin *glusterfsPlugin) newMounterInternal(spec *volume.Spec, ep *v1.Endp
 		hosts:        ep,
 		path:         source.Path,
 		readOnly:     readOnly,
-		exe:          exe,
 		mountOptions: volume.MountOptionFromSpec(spec),
 	}, nil
 }
 
 func (plugin *glusterfsPlugin) NewUnmounter(volName string, podUID types.UID) (volume.Unmounter, error) {
-	return plugin.newUnmounterInternal(volName, podUID, plugin.host.GetMounter())
+	return plugin.newUnmounterInternal(volName, podUID, plugin.host.GetMounter(plugin.GetPluginName()))
 }
 
 func (plugin *glusterfsPlugin) newUnmounterInternal(volName string, podUID types.UID, mounter mount.Interface) (volume.Unmounter, error) {
@@ -237,11 +234,6 @@ func (plugin *glusterfsPlugin) newUnmounterInternal(volName string, podUID types
 		pod:     &v1.Pod{ObjectMeta: metav1.ObjectMeta{UID: podUID}},
 		plugin:  plugin,
 	}}, nil
-}
-
-func (plugin *glusterfsPlugin) execCommand(command string, args []string) ([]byte, error) {
-	cmd := plugin.exe.Command(command, args...)
-	return cmd.CombinedOutput()
 }
 
 func (plugin *glusterfsPlugin) ConstructVolumeSpec(volumeName, mountPath string) (*volume.Spec, error) {
@@ -271,7 +263,6 @@ type glusterfsMounter struct {
 	hosts        *v1.Endpoints
 	path         string
 	readOnly     bool
-	exe          exec.Interface
 	mountOptions []string
 }
 
@@ -289,10 +280,10 @@ func (b *glusterfsMounter) GetAttributes() volume.Attributes {
 // to mount the volume are available on the underlying node.
 // If not, it returns an error
 func (b *glusterfsMounter) CanMount() error {
-	exe := exec.New()
+	exec := b.plugin.host.GetExec(b.plugin.GetPluginName())
 	switch runtime.GOOS {
 	case "linux":
-		if _, err := exe.Command("/bin/ls", gciLinuxGlusterMountBinaryPath).CombinedOutput(); err != nil {
+		if _, err := exec.Run("/bin/ls", gciLinuxGlusterMountBinaryPath); err != nil {
 			return fmt.Errorf("Required binary %s is missing", gciLinuxGlusterMountBinaryPath)
 		}
 	}
@@ -385,7 +376,8 @@ func (b *glusterfsMounter) setUpAtInternal(dir string) error {
 	mountBinaryVerStr := ""
 	mountStr := ""
 
-	cmdOut, err := b.exe.Command(linuxGlusterMountBinary, "-V").CombinedOutput()
+	exec := b.plugin.host.GetExec(b.plugin.GetPluginName())
+	cmdOut, err := exec.Run(linuxGlusterMountBinary, "-V")
 	if err != nil {
 		glog.Warningf("Failed to get binary %q version", linuxGlusterMountBinary)
 	} else {

@@ -21,7 +21,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/util/exec"
-	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume"
 )
 
@@ -30,9 +29,6 @@ type flexVolumeMounter struct {
 	*flexVolume
 	// Runner used to setup the volume.
 	runner exec.Interface
-	// blockDeviceMounter provides the interface to create filesystem if the
-	// filesystem doesn't exist.
-	blockDeviceMounter mount.Interface
 	// the considered volume spec
 	spec     *volume.Spec
 	readOnly bool

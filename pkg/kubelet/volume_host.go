@@ -113,7 +113,7 @@ func (kvh *kubeletVolumeHost) GetCloudProvider() cloudprovider.Interface {
 	return kvh.kubelet.cloud
 }
 
-func (kvh *kubeletVolumeHost) GetMounter() mount.Interface {
+func (kvh *kubeletVolumeHost) GetMounter(pluginName string) mount.Interface {
 	return kvh.kubelet.mounter
 }
 
@@ -139,4 +139,8 @@ func (kvh *kubeletVolumeHost) GetNodeAllocatable() (v1.ResourceList, error) {
 
 func (kvh *kubeletVolumeHost) GetSecretFunc() func(namespace, name string) (*v1.Secret, error) {
 	return kvh.secretManager.GetSecret
+}
+
+func (kvh *kubeletVolumeHost) GetExec(pluginName string) mount.Exec {
+	return mount.NewOsExec()
 }

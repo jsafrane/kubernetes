@@ -29,11 +29,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/cloudprovider"
-	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/keymutex"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume"
 	"k8s.io/kubernetes/pkg/volume/util"
+	"k8s.io/kubernetes/pkg/volume/util/volumehelper"
 )
 
 type azureDiskAttacher struct {
@@ -166,12 +166,11 @@ func (attacher *azureDiskAttacher) WaitForAttach(spec *volume.Spec, lunStr strin
 		return "", fmt.Errorf("WaitForAttach: wrong lun %q, err: %v", lunStr, err)
 	}
 	scsiHostRescan(&osIOHandler{})
-	exe := exec.New()
 	devicePath := ""
 
 	err = wait.Poll(checkSleepDuration, timeout, func() (bool, error) {
 		glog.V(4).Infof("Checking Azure disk %q(lun %s) is attached.", volumeSource.DiskName, lunStr)
-		if devicePath, err = findDiskByLun(lun, &osIOHandler{}, exe); err == nil {
+		if devicePath, err = findDiskByLun(lun, &osIOHandler{}); err == nil {
 			if len(devicePath) == 0 {
 				glog.Warningf("cannot find attached Azure disk %q(lun %s) locally.", volumeSource.DiskName, lunStr)
 				return false, fmt.Errorf("cannot find attached Azure disk %q(lun %s) locally.", volumeSource.DiskName, lunStr)
@@ -199,7 +198,7 @@ func (attacher *azureDiskAttacher) GetDeviceMountPath(spec *volume.Spec) (string
 
 // MountDevice runs mount command on the node to mount the volume
 func (attacher *azureDiskAttacher) MountDevice(spec *volume.Spec, devicePath string, deviceMountPath string) error {
-	mounter := attacher.host.GetMounter()
+	mounter := attacher.host.GetMounter(azureDataDiskPluginName)
 	notMnt, err := mounter.IsLikelyNotMountPoint(deviceMountPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -222,7 +221,7 @@ func (attacher *azureDiskAttacher) MountDevice(spec *volume.Spec, devicePath str
 		options = append(options, "ro")
 	}
 	if notMnt {
-		diskMounter := &mount.SafeFormatAndMount{Interface: mounter, Runner: exec.New()}
+		diskMounter := volumehelper.NewSafeFormatAndMountFromHost(azureDataDiskPluginName, attacher.host)
 		mountOptions := volume.MountOptionFromSpec(spec, options...)
 		err = diskMounter.FormatAndMount(devicePath, deviceMountPath, *volumeSource.FSType, mountOptions)
 		if err != nil {
@@ -248,7 +247,7 @@ func (plugin *azureDataDiskPlugin) NewDetacher() (volume.Detacher, error) {
 	}
 
 	return &azureDiskDetacher{
-		mounter:       plugin.host.GetMounter(),
+		mounter:       plugin.host.GetMounter(plugin.GetPluginName()),
 		azureProvider: azure,
 	}, nil
 }
