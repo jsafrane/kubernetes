@@ -652,6 +652,7 @@ function start_kubelet {
         --eviction-soft=${EVICTION_SOFT} \
         --eviction-pressure-transition-period=${EVICTION_PRESSURE_TRANSITION_PERIOD} \
         --pod-manifest-path="${POD_MANIFEST_PATH}" \
+        --test-mount-propagation=true \
         ${auth_args} \
         ${dns_args} \
         ${net_plugin_dir_args} \

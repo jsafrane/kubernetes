@@ -141,7 +141,7 @@ var _ = framework.KubeDescribe("Volumes [Volume]", func() {
 	framework.KubeDescribe("GlusterFS [Feature:Volumes]", func() {
 		It("should be mountable", func() {
 			//TODO (copejon) GFS is not supported on debian image.
-			framework.SkipUnlessNodeOSDistroIs("gci")
+			//framework.SkipUnlessNodeOSDistroIs("gci")
 
 			config := framework.VolumeTestConfig{
 				Namespace:   namespace.Name,

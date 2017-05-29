@@ -64,7 +64,7 @@ var _ = framework.KubeDescribe("GCP Volumes", func() {
 	var c clientset.Interface
 
 	BeforeEach(func() {
-		framework.SkipUnlessNodeOSDistroIs("gci")
+		//framework.SkipUnlessNodeOSDistroIs("gci")
 
 		namespace = f.Namespace
 		c = f.ClientSet
