@@ -199,7 +199,7 @@ func (attacher *azureDiskAttacher) GetDeviceMountPath(spec *volume.Spec) (string
 
 // MountDevice runs mount command on the node to mount the volume
 func (attacher *azureDiskAttacher) MountDevice(spec *volume.Spec, devicePath string, deviceMountPath string) error {
-	mounter := attacher.host.GetMounter()
+	mounter := attacher.host.GetMounter(azureDataDiskPluginName)
 	notMnt, err := mounter.IsLikelyNotMountPoint(deviceMountPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -248,7 +248,7 @@ func (plugin *azureDataDiskPlugin) NewDetacher() (volume.Detacher, error) {
 	}
 
 	return &azureDiskDetacher{
-		mounter:       plugin.host.GetMounter(),
+		mounter:       plugin.host.GetMounter(plugin.GetPluginName()),
 		azureProvider: azure,
 	}, nil
 }
