@@ -13,6 +13,7 @@ go_library(
     srcs = [
         "doc.go",
         "exec.go",
+        "exec_mount.go",
         "fake.go",
         "mount.go",
         "mount_linux.go",
