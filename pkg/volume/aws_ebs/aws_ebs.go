@@ -30,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/aws"
-	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/mount"
 	kstrings "k8s.io/kubernetes/pkg/util/strings"
 	"k8s.io/kubernetes/pkg/volume"
@@ -135,7 +134,7 @@ func (plugin *awsElasticBlockStorePlugin) newMounterInternal(spec *volume.Spec, 
 		},
 		fsType:      fsType,
 		readOnly:    readOnly,
-		diskMounter: &mount.SafeFormatAndMount{Interface: plugin.host.GetMounter(plugin.GetPluginName()), Runner: exec.New()}}, nil
+		diskMounter: volumehelper.NewSafeFormatAndMountFromHost(plugin.GetPluginName(), plugin.host)}, nil
 }
 
 func (plugin *awsElasticBlockStorePlugin) NewUnmounter(volName string, podUID types.UID) (volume.Unmounter, error) {

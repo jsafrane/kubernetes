@@ -25,10 +25,10 @@ import (
 
 	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
+	"k8s.io/kubernetes/pkg/volume/util/volumehelper"
 )
 
 type cinderDiskAttacher struct {
@@ -238,7 +238,7 @@ func (attacher *cinderDiskAttacher) MountDevice(spec *volume.Spec, devicePath st
 		options = append(options, "ro")
 	}
 	if notMnt {
-		diskMounter := &mount.SafeFormatAndMount{Interface: mounter, Runner: exec.New()}
+		diskMounter := volumehelper.NewSafeFormatAndMountFromHost(cinderVolumePluginName, attacher.host)
 		mountOptions := volume.MountOptionFromSpec(spec, options...)
 		err = diskMounter.FormatAndMount(devicePath, deviceMountPath, volumeSource.FSType, mountOptions)
 		if err != nil {
