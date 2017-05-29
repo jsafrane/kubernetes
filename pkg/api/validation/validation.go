@@ -141,7 +141,96 @@ func ValidatePodSpecificAnnotations(annotations map[string]string, spec *api.Pod
 		allErrs = append(allErrs, field.Invalid(fldPath.Key(api.UnsafeSysctlsPodAnnotationKey), strings.Join(inBoth, ", "), "can not be safe and unsafe"))
 	}
 
+	if _, isPropagation := annotations[api.MountPropagationAnnotation]; isPropagation {
+		allErrs = append(allErrs, ValidateMountPropagationAnnotation(annotations, spec, fldPath)...)
+	}
+
 	return allErrs
+}
+
+func ValidateMountPropagationAnnotation(annotations map[string]string, spec *api.PodSpec, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	propagations, err := helper.GetPodPropagation(annotations)
+	if err != nil {
+		allErrs = append(allErrs, field.Invalid(fldPath, api.MountPropagationAnnotation, err.Error()))
+		return allErrs
+	}
+
+	// Check that only existing containers and volumeMounts are in the map
+	for containerName, volumePropagations := range propagations {
+		containerFound := false
+		for _, container := range spec.Containers {
+			if container.Name != containerName {
+				continue
+			}
+			containerFound = true
+
+			// container found, check that all volumeMounts
+			for mountName, propagation := range volumePropagations {
+				// check that the volumeMount really exists
+				allErrs = append(allErrs, ValidateMountPropagationContainerMount(mountName, &container, fldPath)...)
+				// check that the propagation value is valid for given container
+				allErrs = append(allErrs, ValidateMountPropagationValue(propagation, mountName, &container, fldPath)...)
+				// check that propagation is allowed for given VolumeSource
+				allErrs = append(allErrs, ValidateMountPropagationSource(mountName, spec, fldPath)...)
+			}
+			break
+		}
+		if !containerFound {
+			msg := fmt.Sprintf("container %s does not exist", containerName)
+			allErrs = append(allErrs, field.Invalid(fldPath, api.MountPropagationAnnotation, msg))
+		}
+	}
+	return allErrs
+}
+
+// ValidateMountPropagationSource ensures that only HostPath volumes can have propagation set
+func ValidateMountPropagationSource(mountName string, spec *api.PodSpec, fldPath *field.Path) field.ErrorList {
+	for _, volume := range spec.Volumes {
+		if volume.Name == mountName {
+			if volume.HostPath == nil {
+				msg := fmt.Sprintf("invalid propagation of volume %s: only hostPath volumes can have mount propagation", mountName)
+				return field.ErrorList{field.Invalid(fldPath, api.MountPropagationAnnotation, msg)}
+			}
+			break
+		}
+	}
+	return field.ErrorList{}
+}
+
+// ValidateMountPropagationContainerMount ensures that annotation refers to valid VolumeMounts
+func ValidateMountPropagationContainerMount(mountName string, container *api.Container, fldPath *field.Path) field.ErrorList {
+	mountFound := false
+	for _, mount := range container.VolumeMounts {
+		if mount.Name != mountName {
+			continue
+		}
+		mountFound = true
+		break
+	}
+	if !mountFound {
+		msg := fmt.Sprintf("mount %s does not exists in container %s", mountName, container.Name)
+		return field.ErrorList{field.Invalid(fldPath, api.MountPropagationAnnotation, msg)}
+	}
+	return field.ErrorList{}
+}
+
+// ValidateMountPropagationValue ensures that annotation has valid values for particular Container and VolumeMount
+func ValidateMountPropagationValue(propagation api.MountPropagation, mountName string, container *api.Container, fldPath *field.Path) field.ErrorList {
+	switch propagation {
+	case api.MountPropagationPrivate, api.MountPropagationRSlave:
+		// valid in all pods
+	case api.MountPropagationRShared:
+		// container must be privileged for rshared propagation
+		if container.SecurityContext == nil || container.SecurityContext.Privileged == nil || !*container.SecurityContext.Privileged {
+			msg := fmt.Sprintf("mount %s in unprivileged container %s can't be rshared", mountName, container.Name)
+			return field.ErrorList{field.Invalid(fldPath, api.MountPropagationAnnotation, msg)}
+		}
+	default:
+		msg := fmt.Sprintf("unknown mount propagation %s", propagation)
+		return field.ErrorList{field.Invalid(fldPath, api.MountPropagationAnnotation, msg)}
+	}
+	return field.ErrorList{}
 }
 
 // ValidateTolerationsInPodAnnotations tests that the serialized tolerations in Pod.Annotations has valid data

@@ -166,6 +166,7 @@ func UnsecuredKubeletDeps(s *options.KubeletServer) (*kubelet.KubeletDeps, error
 		Writer:             writer,
 		VolumePlugins:      ProbeVolumePlugins(s.VolumePluginDir),
 		TLSOptions:         tlsOptions,
+		MountOptions:       &kubelet.KubeletMountOptions{EnableMountPropagation: s.KubeletFlags.MountPropagation},
 	}, nil
 }
 

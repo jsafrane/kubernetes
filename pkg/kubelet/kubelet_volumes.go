@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/api/v1"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
+	"k8s.io/kubernetes/pkg/kubelet/lifecycle"
 	"k8s.io/kubernetes/pkg/util/removeall"
 	"k8s.io/kubernetes/pkg/volume"
 	volumetypes "k8s.io/kubernetes/pkg/volume/util/types"
@@ -135,4 +136,36 @@ func (kl *Kubelet) cleanupOrphanedPodDirs(
 	logSpew(orphanVolumeErrors)
 	logSpew(orphanRemovalErrors)
 	return utilerrors.NewAggregate(orphanRemovalErrors)
+}
+
+func newMountPropagationAdmissionHandler(propagationEnabled bool) *mountPropagationAdmissionHandler {
+	return &mountPropagationAdmissionHandler{
+		propagationEnabled: propagationEnabled,
+	}
+}
+
+// mountPropagationAdmissionHandler is an PodAdmitHandler that handles
+// v1.MountPropagationAnnotation on pods. Kubelet can handle pods with this
+// annotation only when it was started with enabled mount propagation (currently
+// kubelet --test-mount-propagation)
+type mountPropagationAdmissionHandler struct {
+	propagationEnabled bool
+}
+
+var _ lifecycle.PodAdmitHandler = &mountPropagationAdmissionHandler{}
+
+func (h *mountPropagationAdmissionHandler) Admit(attrs *lifecycle.PodAdmitAttributes) lifecycle.PodAdmitResult {
+	if h.propagationEnabled {
+		return lifecycle.PodAdmitResult{Admit: true}
+	}
+	// Mount propagation is disabled
+	if _, found := attrs.Pod.Annotations[v1.MountPropagationAnnotation]; found {
+		msg := fmt.Sprintf("Mount propagation is disabled on this node, annotation %q is not allowed", v1.MountPropagationAnnotation)
+		return lifecycle.PodAdmitResult{
+			Admit:   false,
+			Reason:  "InvalidMountPropagation",
+			Message: msg,
+		}
+	}
+	return lifecycle.PodAdmitResult{Admit: true}
 }

@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/v1"
 )
 
 // NonConvertibleFields iterates over the provided map and filters out all but
@@ -596,4 +597,24 @@ func StorageNodeAffinityToAlphaAnnotation(annotations map[string]string, affinit
 	}
 	annotations[api.AlphaStorageNodeAffinityAnnotation] = string(json)
 	return nil
+}
+
+type MountPropagationMap map[string]map[string]api.MountPropagation
+
+func GetPodPropagation(podAnnotations map[string]string) (MountPropagationMap, error) {
+	var out MountPropagationMap
+	ann, found := podAnnotations[v1.MountPropagationAnnotation]
+	if !found {
+		// No propagation configured
+		return out, nil
+	}
+	if strings.TrimSpace(ann) == "" {
+		// Empty annotation is OK
+		return MountPropagationMap{}, nil
+	}
+	// Everything else must be json
+	if err := json.Unmarshal([]byte(ann), &out); err != nil {
+		return MountPropagationMap{}, fmt.Errorf("cannot decode annotation %s to MountPropagationMap: %v", v1.MountPropagationAnnotation, err)
+	}
+	return out, nil
 }

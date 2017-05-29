@@ -81,6 +81,10 @@ type KubeletFlags struct {
 	// This flag, if set, sets the unique id of the instance that an external provider (i.e. cloudprovider)
 	// can use to identify a specific node
 	ProviderID string
+
+	// Experimental flag that enables shared/slave propagation for mounts in
+	// pods. It may be redesigned or even removed in future releases!
+	MountPropagation bool
 }
 
 // KubeletServer encapsulates all of the parameters necessary for starting up
@@ -142,6 +146,12 @@ func (f *KubeletFlags) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&f.DockershimRootDirectory, "experimental-dockershim-root-directory", f.DockershimRootDirectory, "Path to the dockershim root directory.")
 	fs.StringVar(&f.ProviderID, "provider-id", f.ProviderID, "Unique identifier for identifying the node in a machine database, i.e cloudprovider")
 	fs.MarkHidden("experimental-dockershim-root-directory")
+
+	// test-mount-propagation will be removed in a future release either because
+	// mount propagation works and will be enabled by default or does not work
+	// and we need to get back to the drawing board.
+	fs.BoolVar(&f.MountPropagation, "test-mount-propagation", f.MountPropagation, "Enables shared/slave mount propagation from pods. For testing only.")
+	fs.MarkDeprecated("test-mount-propagation", "This option is available for testing only and may be removed in a future version.")
 }
 
 // addFlags adds flags for a specific componentconfig.KubeletConfiguration to the specified FlagSet
