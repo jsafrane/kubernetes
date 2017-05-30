@@ -367,6 +367,16 @@ func (pm *VolumePluginMgr) InitPlugins(plugins []VolumePlugin, host VolumeHost) 
 	return utilerrors.NewAggregate(allErrs)
 }
 
+func (pm *VolumePluginMgr) GetPluginNames() []string {
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
+	names := make([]string, len(pm.plugins))
+	for name, _ := range pm.plugins {
+		names = append(names, name)
+	}
+	return names
+}
+
 // FindPluginBySpec looks for a plugin that can support a given volume
 // specification.  If no plugins can support or more than one plugin can
 // support it, return error.
