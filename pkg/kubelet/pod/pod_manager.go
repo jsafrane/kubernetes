@@ -23,6 +23,7 @@ import (
 	"k8s.io/kubernetes/pkg/api/v1"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/secret"
+	"k8s.io/kubernetes/pkg/volume"
 )
 
 // Manager stores and manages access to pods, maintaining the mappings
@@ -118,13 +119,17 @@ type basicManager struct {
 
 	// A mirror pod client to create/delete mirror pods.
 	MirrorClient
+
+	// A MountPodManager that keeps track of pods with mount utilities
+	mountPodMgr volume.MountPodManager
 }
 
 // NewBasicPodManager returns a functional Manager.
-func NewBasicPodManager(client MirrorClient, secretManager secret.Manager) Manager {
+func NewBasicPodManager(client MirrorClient, secretManager secret.Manager, mountPodMgr volume.MountPodManager) Manager {
 	pm := &basicManager{}
 	pm.secretManager = secretManager
 	pm.MirrorClient = client
+	pm.mountPodMgr = mountPodMgr
 	pm.SetPods(nil)
 	return pm
 }
@@ -177,6 +182,9 @@ func (pm *basicManager) updatePodsInternal(pods ...*v1.Pod) {
 				pm.translationByUID[mirror.UID] = pod.UID
 			}
 		}
+		if pm.mountPodMgr != nil {
+			pm.mountPodMgr.AddPod(pod)
+		}
 	}
 }
 
@@ -194,6 +202,9 @@ func (pm *basicManager) DeletePod(pod *v1.Pod) {
 	} else {
 		delete(pm.podByUID, pod.UID)
 		delete(pm.podByFullName, podFullName)
+	}
+	if pm.mountPodMgr != nil {
+		pm.mountPodMgr.DeletePod(pod)
 	}
 }
 

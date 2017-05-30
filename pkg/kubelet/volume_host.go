@@ -20,10 +20,13 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/golang/glog"
+
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/pkg/cloudprovider"
+	"k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/secret"
 	"k8s.io/kubernetes/pkg/util/io"
 	"k8s.io/kubernetes/pkg/util/mount"
@@ -39,20 +42,25 @@ import (
 func NewInitializedVolumePluginMgr(
 	kubelet *Kubelet,
 	secretManager secret.Manager,
-	plugins []volume.VolumePlugin) (*volume.VolumePluginMgr, error) {
+	plugins []volume.VolumePlugin) (*volume.VolumePluginMgr, volume.MountPodManager, error) {
+
+	volumePluginMgr := &volume.VolumePluginMgr{}
+	// TODO: make the namespace configurable in beta
+	mountPodMgr := volume.NewMountPodManager(volumePluginMgr, volume.DefaultMountPodNamespace)
 	kvh := &kubeletVolumeHost{
 		kubelet:         kubelet,
-		volumePluginMgr: volume.VolumePluginMgr{},
+		volumePluginMgr: volumePluginMgr,
 		secretManager:   secretManager,
+		mountPodMgr:     mountPodMgr,
 	}
 
 	if err := kvh.volumePluginMgr.InitPlugins(plugins, kvh); err != nil {
-		return nil, fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"Could not initialize volume plugins for KubeletVolumePluginMgr: %v",
 			err)
 	}
 
-	return &kvh.volumePluginMgr, nil
+	return volumePluginMgr, mountPodMgr, nil
 }
 
 // Compile-time check to ensure kubeletVolumeHost implements the VolumeHost interface
@@ -64,8 +72,9 @@ func (kvh *kubeletVolumeHost) GetPluginDir(pluginName string) string {
 
 type kubeletVolumeHost struct {
 	kubelet         *Kubelet
-	volumePluginMgr volume.VolumePluginMgr
+	volumePluginMgr *volume.VolumePluginMgr
 	secretManager   secret.Manager
+	mountPodMgr     volume.MountPodManager
 }
 
 func (kvh *kubeletVolumeHost) GetPodVolumeDir(podUID types.UID, pluginName string, volumeName string) string {
@@ -114,7 +123,18 @@ func (kvh *kubeletVolumeHost) GetCloudProvider() cloudprovider.Interface {
 }
 
 func (kvh *kubeletVolumeHost) GetMounter(pluginName string) mount.Interface {
-	return kvh.kubelet.mounter
+	if !kvh.kubelet.enableMountPropagation {
+		return kvh.kubelet.mounter
+	}
+
+	pod := kvh.mountPodMgr.GetPod(pluginName)
+	if pod == nil {
+		glog.V(5).Infof("Using default mounter for %s", pluginName)
+		return kvh.kubelet.mounter
+	}
+	glog.V(5).Infof("Using pod %s/%s to mount %s", pod.Namespace, pod.Name, pluginName)
+	exec := &containerExec{pod: pod, kl: kvh.kubelet}
+	return mount.NewExecMounter(exec, kvh.kubelet.mounter)
 }
 
 func (kvh *kubeletVolumeHost) GetWriter() io.Writer {
@@ -142,5 +162,30 @@ func (kvh *kubeletVolumeHost) GetSecretFunc() func(namespace, name string) (*v1.
 }
 
 func (kvh *kubeletVolumeHost) GetExec(pluginName string) mount.Exec {
-	return mount.NewOsExec()
+	if !kvh.kubelet.enableMountPropagation {
+		return mount.NewOsExec()
+	}
+
+	pod := kvh.mountPodMgr.GetPod(pluginName)
+	if pod == nil {
+		glog.V(5).Infof("Using default exec for %s", pluginName)
+		return mount.NewOsExec()
+	}
+	glog.V(5).Infof("Using pod %s/%s to exec utilities for %s", pod.Namespace, pod.Name, pluginName)
+	return &containerExec{pod: pod, kl: kvh.kubelet}
+}
+
+// containerExec is implementation of mount.Exec interface that executes stuff
+// in a local container.
+type containerExec struct {
+	pod *v1.Pod
+	kl  *Kubelet
+}
+
+var _ mount.Exec = &containerExec{}
+
+func (e *containerExec) Run(cmd string, args ...string) ([]byte, error) {
+	c := append([]string{cmd}, args...)
+	glog.V(5).Infof("Exec mounter running in pod %s/%s: %v", e.pod.Namespace, e.pod.Name, c)
+	return e.kl.RunInContainer(container.GetPodFullName(e.pod), e.pod.UID, e.pod.Spec.Containers[0].Name, c)
 }

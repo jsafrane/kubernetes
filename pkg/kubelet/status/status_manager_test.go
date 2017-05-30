@@ -74,7 +74,7 @@ func (m *manager) testSyncBatch() {
 }
 
 func newTestManager(kubeClient clientset.Interface) *manager {
-	podManager := kubepod.NewBasicPodManager(podtest.NewFakeMirrorClient(), kubesecret.NewFakeManager())
+	podManager := kubepod.NewBasicPodManager(podtest.NewFakeMirrorClient(), kubesecret.NewFakeManager(), nil)
 	podManager.AddPod(getTestPod())
 	return NewManager(kubeClient, podManager, &statustest.FakePodDeletionSafetyProvider{}).(*manager)
 }

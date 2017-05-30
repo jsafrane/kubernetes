@@ -208,7 +208,9 @@ func newTestKubeletWithImageList(
 	fakeMirrorClient := podtest.NewFakeMirrorClient()
 	secretManager := secret.NewSimpleSecretManager(kubelet.kubeClient)
 	kubelet.secretManager = secretManager
-	kubelet.podManager = kubepod.NewBasicPodManager(fakeMirrorClient, kubelet.secretManager)
+	kubelet.volumePluginMgr = &volume.VolumePluginMgr{}
+	kubelet.mountPodMgr = volume.NewMountPodManager(kubelet.volumePluginMgr, volume.DefaultMountPodNamespace)
+	kubelet.podManager = kubepod.NewBasicPodManager(fakeMirrorClient, kubelet.secretManager, kubelet.mountPodMgr)
 	kubelet.statusManager = status.NewManager(fakeKubeClient, kubelet.podManager, &statustest.FakePodDeletionSafetyProvider{})
 	diskSpaceManager, err := newDiskSpaceManager(mockCadvisor, DiskSpacePolicy{})
 	if err != nil {
@@ -275,7 +277,7 @@ func newTestKubeletWithImageList(
 	kubelet.admitHandlers.AddPodAdmitHandler(lifecycle.NewPredicateAdmitHandler(kubelet.getNodeAnyWay, lifecycle.NewAdmissionFailureHandlerStub()))
 
 	plug := &volumetest.FakeVolumePlugin{PluginName: "fake", Host: nil}
-	kubelet.volumePluginMgr, err =
+	kubelet.volumePluginMgr, kubelet.mountPodMgr, err =
 		NewInitializedVolumePluginMgr(kubelet, kubelet.secretManager, []volume.VolumePlugin{plug})
 	require.NoError(t, err, "Failed to initialize VolumePluginMgr")
 

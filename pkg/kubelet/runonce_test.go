@@ -63,8 +63,10 @@ func TestRunOnce(t *testing.T) {
 		Capacity: 10 * mb,
 	}, nil)
 	fakeSecretManager := secret.NewFakeManager()
+	volumePluginMgr := &volume.VolumePluginMgr{}
+	mountPodMgr := volume.NewMountPodManager(volumePluginMgr, volume.DefaultMountPodNamespace)
 	podManager := kubepod.NewBasicPodManager(
-		podtest.NewFakeMirrorClient(), fakeSecretManager)
+		podtest.NewFakeMirrorClient(), fakeSecretManager, mountPodMgr)
 	diskSpaceManager, _ := newDiskSpaceManager(cadvisor, DiskSpacePolicy{})
 	fakeRuntime := &containertest.FakeRuntime{}
 	basePath, err := utiltesting.MkTmpdir("kubelet")
@@ -92,7 +94,7 @@ func TestRunOnce(t *testing.T) {
 	kb.containerManager = cm.NewStubContainerManager()
 
 	plug := &volumetest.FakeVolumePlugin{PluginName: "fake", Host: nil}
-	kb.volumePluginMgr, err =
+	kb.volumePluginMgr, kb.mountPodMgr, err =
 		NewInitializedVolumePluginMgr(kb, fakeSecretManager, []volume.VolumePlugin{plug})
 	if err != nil {
 		t.Fatalf("failed to initialize VolumePluginMgr: %v", err)

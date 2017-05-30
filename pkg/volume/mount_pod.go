@@ -24,6 +24,8 @@ import (
 	"k8s.io/kubernetes/pkg/api/v1"
 )
 
+const DefaultMountPodNamespace = "kube-mount"
+
 // MountPodManager is a cache of mount pods. Its AddPod and DeletePod should be
 // called when a pod appears, changes state or disapears in API server.
 // It then can return a mount pod for given plugin name.

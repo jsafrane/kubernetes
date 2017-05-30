@@ -500,8 +500,15 @@ func NewMainKubelet(kubeCfg *componentconfig.KubeletConfiguration, kubeDeps *Kub
 	klet.livenessManager = proberesults.NewManager()
 
 	klet.podCache = kubecontainer.NewCache()
+
+	klet.volumePluginMgr, klet.mountPodMgr, err =
+		NewInitializedVolumePluginMgr(klet, secretManager, kubeDeps.VolumePlugins)
+	if err != nil {
+		return nil, err
+	}
+
 	// podManager is also responsible for keeping secretManager contents up-to-date.
-	klet.podManager = kubepod.NewBasicPodManager(kubepod.NewBasicMirrorClient(klet.kubeClient), secretManager)
+	klet.podManager = kubepod.NewBasicPodManager(kubepod.NewBasicMirrorClient(klet.kubeClient), secretManager, klet.mountPodMgr)
 
 	if kubeCfg.RemoteRuntimeEndpoint != "" {
 		// kubeCfg.RemoteImageEndpoint is same as kubeCfg.RemoteRuntimeEndpoint if not explicitly specified
@@ -670,12 +677,6 @@ func NewMainKubelet(kubeCfg *componentconfig.KubeletConfiguration, kubeDeps *Kub
 		klet.runner,
 		containerRefManager,
 		kubeDeps.Recorder)
-
-	klet.volumePluginMgr, err =
-		NewInitializedVolumePluginMgr(klet, secretManager, kubeDeps.VolumePlugins)
-	if err != nil {
-		return nil, err
-	}
 
 	// If the experimentalMounterPathFlag is set, we do not want to
 	// check node capabilities since the mount path is not the default
@@ -847,6 +848,9 @@ type Kubelet struct {
 
 	// Volume plugins.
 	volumePluginMgr *volume.VolumePluginMgr
+
+	// Mount pods.
+	mountPodMgr volume.MountPodManager
 
 	// Network plugin.
 	networkPlugin network.NetworkPlugin

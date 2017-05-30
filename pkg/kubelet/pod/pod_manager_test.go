@@ -26,13 +26,16 @@ import (
 	podtest "k8s.io/kubernetes/pkg/kubelet/pod/testing"
 	"k8s.io/kubernetes/pkg/kubelet/secret"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
+	"k8s.io/kubernetes/pkg/volume"
 )
 
 // Stub out mirror client for testing purpose.
 func newTestManager() (*basicManager, *podtest.FakeMirrorClient) {
 	fakeMirrorClient := podtest.NewFakeMirrorClient()
 	secretManager := secret.NewFakeManager()
-	manager := NewBasicPodManager(fakeMirrorClient, secretManager).(*basicManager)
+	volumePluginMgr := &volume.VolumePluginMgr{}
+	mountPodMgr := volume.NewMountPodManager(volumePluginMgr, volume.DefaultMountPodNamespace)
+	manager := NewBasicPodManager(fakeMirrorClient, secretManager, mountPodMgr).(*basicManager)
 	return manager, fakeMirrorClient
 }
 
