@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/runtime"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	clientv1 "k8s.io/client-go/pkg/api/v1"
+	restclient "k8s.io/client-go/rest"
 	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/api"
@@ -87,7 +88,8 @@ func NewAttachDetachController(
 	cloud cloudprovider.Interface,
 	plugins []volume.VolumePlugin,
 	disableReconciliationSync bool,
-	reconcilerSyncDuration time.Duration) (AttachDetachController, error) {
+	reconcilerSyncDuration time.Duration,
+	restConfig *restclient.Config) (AttachDetachController, error) {
 	// TODO: The default resyncPeriod for shared informers is 12 hours, this is
 	// unacceptable for the attach/detach controller. For example, if a pod is
 	// skipped because the node it is scheduled to didn't set its annotation in
@@ -118,6 +120,8 @@ func NewAttachDetachController(
 	if err := adc.volumePluginMgr.InitPlugins(plugins, adc); err != nil {
 		return nil, fmt.Errorf("Could not initialize volume plugins for Attach/Detach Controller: %+v", err)
 	}
+
+	adc.mountPodMgr = volume.NewMountPodManager(&adc.volumePluginMgr, volume.DefaultMountPodNamespace)
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
@@ -234,6 +238,14 @@ type attachDetachController struct {
 
 	// recorder is used to record events in the API server
 	recorder record.EventRecorder
+
+	// mountPodMgr is used to keep track of pods with attach/detach utilities
+	// for individual volume plugins
+	mountPodMgr volume.MountPodManager
+
+	// restConfig is used to do "kubectl exec <remote-pod>" to execute
+	// attach/detach utilities in remote pods.
+	restConfig *restclient.Config
 }
 
 func (adc *attachDetachController) Run(stopCh <-chan struct{}) {
@@ -377,6 +389,7 @@ func (adc *attachDetachController) podAdd(obj interface{}) {
 	if pod == nil || !ok {
 		return
 	}
+	adc.mountPodMgr.AddPod(pod)
 	if pod.Spec.NodeName == "" {
 		// Ignore pods without NodeName, indicating they are not scheduled.
 		return
@@ -401,6 +414,7 @@ func (adc *attachDetachController) podUpdate(oldObj, newObj interface{}) {
 	if pod == nil || !ok {
 		return
 	}
+	adc.mountPodMgr.AddPod(pod)
 	if pod.Spec.NodeName == "" {
 		// Ignore pods without NodeName, indicating they are not scheduled.
 		return
@@ -420,6 +434,7 @@ func (adc *attachDetachController) podDelete(obj interface{}) {
 	if pod == nil || !ok {
 		return
 	}
+	adc.mountPodMgr.DeletePod(pod)
 
 	util.ProcessPodVolumes(pod, false, /* addVolumes */
 		adc.desiredStateOfWorld, &adc.volumePluginMgr, adc.pvcLister, adc.pvLister)
@@ -553,7 +568,11 @@ func (adc *attachDetachController) GetSecretFunc() func(namespace, name string) 
 }
 
 func (adc *attachDetachController) GetExec(pluginName string) mount.Exec {
-	return mount.NewOsExec()
+	pod := adc.mountPodMgr.GetPod(pluginName)
+	if pod == nil {
+		return mount.NewOsExec()
+	}
+	return mount.NewPodExec(pod, adc.kubeClient, adc.restConfig)
 }
 
 func (adc *attachDetachController) addNodeToDswp(node *v1.Node, nodeName types.NodeName) {

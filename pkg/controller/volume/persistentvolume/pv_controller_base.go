@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	clientv1 "k8s.io/client-go/pkg/api/v1"
+	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -62,8 +63,10 @@ type ControllerParameters struct {
 	VolumeInformer            coreinformers.PersistentVolumeInformer
 	ClaimInformer             coreinformers.PersistentVolumeClaimInformer
 	ClassInformer             storageinformers.StorageClassInformer
+	PodInformer               coreinformers.PodInformer
 	EventRecorder             record.EventRecorder
 	EnableDynamicProvisioning bool
+	RestConfig                *restclient.Config
 }
 
 // NewController creates a new PersistentVolume controller
@@ -88,11 +91,13 @@ func NewController(p ControllerParameters) (*PersistentVolumeController, error) 
 		createProvisionedPVInterval:   createProvisionedPVInterval,
 		claimQueue:                    workqueue.NewNamed("claims"),
 		volumeQueue:                   workqueue.NewNamed("volumes"),
+		restConfig:                    p.RestConfig,
 	}
 
 	if err := controller.volumePluginMgr.InitPlugins(p.VolumePlugins, controller); err != nil {
 		return nil, fmt.Errorf("Could not initialize volume plugins for PersistentVolume Controller: %v", err)
 	}
+	controller.mountPodMgr = vol.NewMountPodManager(&controller.volumePluginMgr, vol.DefaultMountPodNamespace)
 
 	p.VolumeInformer.Informer().AddEventHandlerWithResyncPeriod(
 		cache.ResourceEventHandlerFuncs{
@@ -118,6 +123,15 @@ func NewController(p ControllerParameters) (*PersistentVolumeController, error) 
 
 	controller.classLister = p.ClassInformer.Lister()
 	controller.classListerSynced = p.ClassInformer.Informer().HasSynced
+
+	p.PodInformer.Informer().AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    func(obj interface{}) { controller.mountPodMgr.AddPod(obj.(*v1.Pod)) },
+			UpdateFunc: func(oldObj, newObj interface{}) { controller.mountPodMgr.AddPod(newObj.(*v1.Pod)) },
+			DeleteFunc: func(obj interface{}) { controller.mountPodMgr.DeletePod(obj.(*v1.Pod)) },
+		})
+	controller.podLister = p.PodInformer.Lister()
+	controller.podListerSynced = p.PodInformer.Informer().HasSynced
 	return controller, nil
 }
 

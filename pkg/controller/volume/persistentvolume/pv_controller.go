@@ -23,6 +23,7 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -156,11 +157,15 @@ type PersistentVolumeController struct {
 	claimListerSynced  cache.InformerSynced
 	classLister        storagelisters.StorageClassLister
 	classListerSynced  cache.InformerSynced
+	podLister          corelisters.PodLister
+	podListerSynced    cache.InformerSynced
 
 	kubeClient                clientset.Interface
 	eventRecorder             record.EventRecorder
 	cloud                     cloudprovider.Interface
 	volumePluginMgr           vol.VolumePluginMgr
+	mountPodMgr               vol.MountPodManager
+	restConfig                *restclient.Config
 	enableDynamicProvisioning bool
 	clusterName               string
 

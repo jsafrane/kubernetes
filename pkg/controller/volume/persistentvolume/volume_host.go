@@ -87,6 +87,10 @@ func (adc *PersistentVolumeController) GetSecretFunc() func(namespace, name stri
 	}
 }
 
-func (adc *PersistentVolumeController) GetExec(pluginName string) mount.Exec {
-	return mount.NewOsExec()
+func (ctrl *PersistentVolumeController) GetExec(pluginName string) mount.Exec {
+	pod := ctrl.mountPodMgr.GetPod(pluginName)
+	if pod == nil {
+		return mount.NewOsExec()
+	}
+	return mount.NewPodExec(pod, ctrl.kubeClient, ctrl.restConfig)
 }

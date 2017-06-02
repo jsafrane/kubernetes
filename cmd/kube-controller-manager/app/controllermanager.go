@@ -553,7 +553,9 @@ func StartControllers(controllers map[string]InitFunc, s *options.CMServer, root
 			VolumeInformer:            sharedInformers.Core().V1().PersistentVolumes(),
 			ClaimInformer:             sharedInformers.Core().V1().PersistentVolumeClaims(),
 			ClassInformer:             sharedInformers.Storage().V1().StorageClasses(),
+			PodInformer:               sharedInformers.Core().V1().Pods(),
 			EnableDynamicProvisioning: s.VolumeConfiguration.EnableDynamicProvisioning,
+			RestConfig:                clientBuilder.ConfigOrDie("persistent-volume-binder"),
 		}
 		volumeController, volumeControllerErr := persistentvolumecontroller.NewController(params)
 		if volumeControllerErr != nil {
@@ -579,7 +581,8 @@ func StartControllers(controllers map[string]InitFunc, s *options.CMServer, root
 				cloud,
 				ProbeAttachableVolumePlugins(s.VolumeConfiguration),
 				s.DisableAttachDetachReconcilerSync,
-				s.ReconcilerSyncLoopPeriod.Duration)
+				s.ReconcilerSyncLoopPeriod.Duration,
+				clientBuilder.ConfigOrDie("attachdetach-controller"))
 		if attachDetachControllerErr != nil {
 			return fmt.Errorf("failed to start attach/detach controller: %v", attachDetachControllerErr)
 		}
