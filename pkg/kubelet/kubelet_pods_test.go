@@ -46,6 +46,7 @@ import (
 )
 
 func TestMakeMounts(t *testing.T) {
+	bTrue := true
 	testCases := map[string]struct {
 		container      v1.Container
 		podVolumes     kubecontainer.VolumeMap
@@ -53,13 +54,14 @@ func TestMakeMounts(t *testing.T) {
 		expectedErrMsg string
 		expectedMounts []kubecontainer.Mount
 	}{
-		"valid mounts": {
+		"valid mounts in unprivileged container": {
 			podVolumes: kubecontainer.VolumeMap{
-				"disk":  kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/mnt/disk"}},
+				"disk":  kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/mnt/disk", mountPropagation: v1.MountPropagationRShared}},
 				"disk4": kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/mnt/host"}},
-				"disk5": kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/var/lib/kubelet/podID/volumes/empty/disk5"}},
+				"disk5": kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/var/lib/kubelet/podID/volumes/empty/disk5", mountPropagation: v1.MountPropagationPrivate}},
 			},
 			container: v1.Container{
+				Name: "container1",
 				VolumeMounts: []v1.VolumeMount{
 					{
 						MountPath: "/etc/hosts",
@@ -90,6 +92,7 @@ func TestMakeMounts(t *testing.T) {
 					HostPath:       "/mnt/disk",
 					ReadOnly:       false,
 					SELinuxRelabel: false,
+					Propagation:    v1.MountPropagationRSlave,
 				},
 				{
 					Name:           "disk",
@@ -97,6 +100,7 @@ func TestMakeMounts(t *testing.T) {
 					HostPath:       "/mnt/disk",
 					ReadOnly:       true,
 					SELinuxRelabel: false,
+					Propagation:    v1.MountPropagationRSlave,
 				},
 				{
 					Name:           "disk4",
@@ -104,6 +108,7 @@ func TestMakeMounts(t *testing.T) {
 					HostPath:       "/mnt/host",
 					ReadOnly:       false,
 					SELinuxRelabel: false,
+					Propagation:    v1.MountPropagationRSlave,
 				},
 				{
 					Name:           "disk5",
@@ -111,6 +116,77 @@ func TestMakeMounts(t *testing.T) {
 					HostPath:       "/var/lib/kubelet/podID/volumes/empty/disk5",
 					ReadOnly:       false,
 					SELinuxRelabel: false,
+					Propagation:    v1.MountPropagationPrivate,
+				},
+			},
+			expectErr: false,
+		},
+		"valid mounts in privileged container": {
+			podVolumes: kubecontainer.VolumeMap{
+				"disk":  kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/mnt/disk", mountPropagation: v1.MountPropagationRShared}},
+				"disk4": kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/mnt/host"}},
+				"disk5": kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/var/lib/kubelet/podID/volumes/empty/disk5", mountPropagation: v1.MountPropagationPrivate}},
+			},
+			container: v1.Container{
+				Name: "container1",
+				VolumeMounts: []v1.VolumeMount{
+					{
+						MountPath: "/etc/hosts",
+						Name:      "disk",
+						ReadOnly:  false,
+					},
+					{
+						MountPath: "/mnt/path3",
+						Name:      "disk",
+						ReadOnly:  true,
+					},
+					{
+						MountPath: "/mnt/path4",
+						Name:      "disk4",
+						ReadOnly:  false,
+					},
+					{
+						MountPath: "/mnt/path5",
+						Name:      "disk5",
+						ReadOnly:  false,
+					},
+				},
+				SecurityContext: &v1.SecurityContext{
+					Privileged: &bTrue,
+				},
+			},
+			expectedMounts: []kubecontainer.Mount{
+				{
+					Name:           "disk",
+					ContainerPath:  "/etc/hosts",
+					HostPath:       "/mnt/disk",
+					ReadOnly:       false,
+					SELinuxRelabel: false,
+					Propagation:    v1.MountPropagationRShared,
+				},
+				{
+					Name:           "disk",
+					ContainerPath:  "/mnt/path3",
+					HostPath:       "/mnt/disk",
+					ReadOnly:       true,
+					SELinuxRelabel: false,
+					Propagation:    v1.MountPropagationRShared,
+				},
+				{
+					Name:           "disk4",
+					ContainerPath:  "/mnt/path4",
+					HostPath:       "/mnt/host",
+					ReadOnly:       false,
+					SELinuxRelabel: false,
+					Propagation:    v1.MountPropagationRSlave,
+				},
+				{
+					Name:           "disk5",
+					ContainerPath:  "/mnt/path5",
+					HostPath:       "/var/lib/kubelet/podID/volumes/empty/disk5",
+					ReadOnly:       false,
+					SELinuxRelabel: false,
+					Propagation:    v1.MountPropagationPrivate,
 				},
 			},
 			expectErr: false,
@@ -159,7 +235,7 @@ func TestMakeMounts(t *testing.T) {
 				},
 			}
 
-			mounts, err := makeMounts(&pod, "/pod", &tc.container, "fakepodname", "", "", tc.podVolumes)
+			mounts, err := makeMounts(&pod, "/pod", &tc.container, "fakepodname", "", "", tc.podVolumes, true /* enableMountPropagation */)
 
 			// validate only the error if we expect an error
 			if tc.expectErr {
@@ -175,6 +251,17 @@ func TestMakeMounts(t *testing.T) {
 			}
 
 			assert.Equal(t, tc.expectedMounts, mounts, "mounts of container %+v", tc.container)
+
+			// test makeMounts with disabled mount propagation
+			mounts, err = makeMounts(&pod, "/pod", &tc.container, "fakepodname", "", "", tc.podVolumes, false /* enableMountPropagation */)
+			if !tc.expectErr {
+				expectedPrivateMounts := []kubecontainer.Mount{}
+				for _, mount := range tc.expectedMounts {
+					mount.Propagation = v1.MountPropagationPrivate
+					expectedPrivateMounts = append(expectedPrivateMounts, mount)
+				}
+				assert.Equal(t, expectedPrivateMounts, mounts, "mounts of container %+v", tc.container)
+			}
 		})
 	}
 }
