@@ -692,7 +692,7 @@ type HostPathVolumeSource struct {
 	// This field is alpha in 1.8 and can be reworked or removed in a future
 	// release.
 	// +optional
-	MountPropagation MountPropagation
+	MountPropagation MountPropagation `protobuf:"bytes,2,opt,name=mountPropagation,casttype=MountPropagation"`
 }
 
 type MountPropagation string

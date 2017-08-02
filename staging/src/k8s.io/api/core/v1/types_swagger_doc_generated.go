@@ -653,8 +653,9 @@ func (HostAlias) SwaggerDoc() map[string]string {
 }
 
 var map_HostPathVolumeSource = map[string]string{
-	"":     "Represents a host path mapped into a pod. Host path volumes do not support ownership management or SELinux relabeling.",
-	"path": "Path of the directory on the host. More info: https://kubernetes.io/docs/concepts/storage/volumes#hostpath",
+	"":                 "Represents a host path mapped into a pod. Host path volumes do not support ownership management or SELinux relabeling.",
+	"path":             "Path of the directory on the host. More info: https://kubernetes.io/docs/concepts/storage/volumes#hostpath",
+	"MountPropagation": "mountPropagation is the mode how is the directory bind-mounted to a pod. This field is alpha in 1.8 and can be reworked or removed in a future release.",
 }
 
 func (HostPathVolumeSource) SwaggerDoc() map[string]string {

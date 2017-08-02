@@ -1218,6 +1218,12 @@ message HostPathVolumeSource {
   // Path of the directory on the host.
   // More info: https://kubernetes.io/docs/concepts/storage/volumes#hostpath
   optional string path = 1;
+
+  // mountPropagation is the mode how is the directory bind-mounted to a pod.
+  // This field is alpha in 1.8 and can be reworked or removed in a future
+  // release.
+  // +optional
+  optional string mountPropagation = 2;
 }
 
 // Represents an ISCSI disk.
