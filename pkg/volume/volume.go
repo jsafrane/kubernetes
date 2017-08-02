@@ -83,9 +83,10 @@ type Metrics struct {
 
 // Attributes represents the attributes of this mounter.
 type Attributes struct {
-	ReadOnly        bool
-	Managed         bool
-	SupportsSELinux bool
+	ReadOnly         bool
+	Managed          bool
+	SupportsSELinux  bool
+	MountPropagation v1.MountPropagation
 }
 
 // Mounter interface provides methods to set up/mount the volume.
