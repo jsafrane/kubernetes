@@ -614,6 +614,17 @@ func validateHostPathVolumeSource(hostPath *api.HostPathVolumeSource, fldPath *f
 		return allErrs
 	}
 
+	if len(hostPath.MountPropagation) != 0 {
+		if !utilfeature.DefaultFeatureGate.Enabled(features.MountPropagation) {
+			allErrs = append(allErrs, field.Forbidden(fldPath.Child("mountPropagation"), "mount propagation is disabled by feature-gate"))
+		} else {
+			var supportedMountPropagations = sets.NewString(string(api.MountPropagationPrivate), string(api.MountPropagationRSlave), string(api.MountPropagationRShared))
+			if !supportedMountPropagations.Has(string(hostPath.MountPropagation)) {
+				allErrs = append(allErrs, field.NotSupported(fldPath.Child("mountPropagation"), hostPath.MountPropagation, supportedMountPropagations.List()))
+			}
+		}
+	}
+
 	allErrs = append(allErrs, validatePathNoBacksteps(hostPath.Path, fldPath.Child("path"))...)
 	return allErrs
 }

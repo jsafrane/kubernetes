@@ -688,7 +688,20 @@ type HostPathVolumeSource struct {
 	// Path of the directory on the host.
 	// More info: https://kubernetes.io/docs/concepts/storage/volumes#hostpath
 	Path string `json:"path" protobuf:"bytes,1,opt,name=path"`
+	// mountPropagation is the mode how is the directory bind-mounted to a pod.
+	// This field is alpha in 1.8 and can be reworked or removed in a future
+	// release.
+	// +optional
+	MountPropagation MountPropagation
 }
+
+type MountPropagation string
+
+const (
+	MountPropagationPrivate MountPropagation = "private"
+	MountPropagationRSlave  MountPropagation = "rslave"
+	MountPropagationRShared MountPropagation = "rshared"
+)
 
 // Represents an empty directory for a pod.
 // Empty directory volumes support ownership management and SELinux relabeling.

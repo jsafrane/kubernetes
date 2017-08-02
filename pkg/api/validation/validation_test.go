@@ -107,6 +107,22 @@ func TestValidatePersistentVolumes(t *testing.T) {
 				PersistentVolumeReclaimPolicy: api.PersistentVolumeReclaimRetain,
 			}),
 		},
+		"volume-with-disabled-mount-propagation": {
+			// TODO: fix when mount propagation is not alpha
+			isExpectedFailure: true,
+			volume: testVolume("foo", "", api.PersistentVolumeSpec{
+				Capacity: api.ResourceList{
+					api.ResourceName(api.ResourceStorage): resource.MustParse("10G"),
+				},
+				AccessModes: []api.PersistentVolumeAccessMode{api.ReadWriteOnce},
+				PersistentVolumeSource: api.PersistentVolumeSource{
+					HostPath: &api.HostPathVolumeSource{
+						Path:             "/foo",
+						MountPropagation: api.MountPropagationPrivate,
+					},
+				},
+			}),
+		},
 		"invalid-accessmode": {
 			isExpectedFailure: true,
 			volume: testVolume("foo", "", api.PersistentVolumeSpec{
@@ -295,6 +311,21 @@ func TestValidatePersistentVolumes(t *testing.T) {
 				StorageClassName: "backstep-local",
 			}),
 		},
+		"bad-mount-propagation": {
+			isExpectedFailure: true,
+			volume: testVolume("foo", "", api.PersistentVolumeSpec{
+				Capacity: api.ResourceList{
+					api.ResourceName(api.ResourceStorage): resource.MustParse("10G"),
+				},
+				AccessModes: []api.PersistentVolumeAccessMode{api.ReadWriteOnce},
+				PersistentVolumeSource: api.PersistentVolumeSource{
+					HostPath: &api.HostPathVolumeSource{
+						Path:             "/foo",
+						MountPropagation: api.MountPropagation("invalid"),
+					},
+				},
+			}),
+		},
 	}
 
 	for name, scenario := range scenarios {
@@ -475,6 +506,60 @@ func TestValidateLocalVolumes(t *testing.T) {
 	}
 	for name, scenario := range scenarios {
 		errs := ValidatePersistentVolume(scenario.volume)
+		if len(errs) == 0 && scenario.isExpectedFailure {
+			t.Errorf("Unexpected success for scenario: %s", name)
+		}
+		if len(errs) > 0 && !scenario.isExpectedFailure {
+			t.Errorf("Unexpected failure for scenario: %s - %+v", name, errs)
+		}
+	}
+}
+
+func TestValidateHostPathMountPropagation(t *testing.T) {
+	scenarios := map[string]struct {
+		isExpectedFailure bool
+		volumeSource      api.VolumeSource
+	}{
+		"valid hostpath volume": {
+			isExpectedFailure: false,
+			volumeSource: api.VolumeSource{
+				HostPath: &api.HostPathVolumeSource{
+					Path:             "/",
+					MountPropagation: api.MountPropagationPrivate,
+				},
+			},
+		},
+		"invalid propagation": {
+			isExpectedFailure: true,
+			volumeSource: api.VolumeSource{
+				HostPath: &api.HostPathVolumeSource{
+					Path:             "/",
+					MountPropagation: api.MountPropagation("invalid"),
+				},
+			},
+		},
+	}
+
+	mountPropagationEnabled := utilfeature.DefaultFeatureGate.Enabled("MountPropagation")
+	defer func() {
+		var err error
+		// restoring the old value
+		if mountPropagationEnabled {
+			err = utilfeature.DefaultFeatureGate.Set("MountPropagation=true")
+		} else {
+			err = utilfeature.DefaultFeatureGate.Set("MountPropagation=false")
+		}
+		if err != nil {
+			t.Errorf("Failed to restore feature gate for MountPropagation: %v", err)
+		}
+	}()
+	err := utilfeature.DefaultFeatureGate.Set("MountPropagation=true")
+	if err != nil {
+		t.Errorf("Failed to enable feature gate for MountPropagation: %v", err)
+		return
+	}
+	for name, scenario := range scenarios {
+		errs := validateVolumeSource(&scenario.volumeSource, field.NewPath("field"))
 		if len(errs) == 0 && scenario.isExpectedFailure {
 			t.Errorf("Unexpected success for scenario: %s", name)
 		}
@@ -1142,6 +1227,21 @@ func TestValidateVolumes(t *testing.T) {
 			errtype:   field.ErrorTypeInvalid,
 			errfield:  "path",
 			errdetail: "must not contain '..'",
+		},
+		{
+			name: "invalid HostPath with disabled mountPropagation",
+			vol: api.Volume{
+				Name: "hostpath",
+				VolumeSource: api.VolumeSource{
+					HostPath: &api.HostPathVolumeSource{
+						Path:             "/mnt/path",
+						MountPropagation: api.MountPropagationPrivate,
+					},
+				},
+			},
+			errtype:   field.ErrorTypeForbidden,
+			errfield:  "mountPropagation",
+			errdetail: "mount propagation is disabled by feature-gate",
 		},
 		// GcePersistentDisk
 		{
