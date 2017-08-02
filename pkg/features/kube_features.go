@@ -126,6 +126,12 @@ const (
 	//
 	// Enable equivalence class cache for scheduler.
 	EnableEquivalenceClassCache utilfeature.Feature = "EnableEquivalenceClassCache"
+
+	// owner: @jsafrane
+	// alpha: v1.8
+	//
+	// Enable mount propagation for HostPath volumes.
+	MountPropagation utilfeature.Feature = "MountPropagation"
 )
 
 func init() {
@@ -151,6 +157,7 @@ var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureS
 	DebugContainers:                             {Default: false, PreRelease: utilfeature.Alpha},
 	PodPriority:                                 {Default: false, PreRelease: utilfeature.Alpha},
 	EnableEquivalenceClassCache:                 {Default: false, PreRelease: utilfeature.Alpha},
+	MountPropagation:                            {Default: false, PreRelease: utilfeature.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
