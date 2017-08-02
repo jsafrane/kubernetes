@@ -85,6 +85,7 @@ go_test(
         "log_path_test.go",
         "memory_eviction_test.go",
         "mirror_pod_test.go",
+        "mount_propagation_test.go",
         "node_container_manager_test.go",
         "pods_container_manager_test.go",
         "resource_usage_test.go",

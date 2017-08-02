@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/golang/glog"
@@ -158,6 +159,16 @@ func (e *E2EServices) startKubelet() (*server, error) {
 		"--eviction-minimum-reclaim", "nodefs.available=5%,nodefs.inodesFree=5%", // The minimum reclaimed resources after eviction.
 		"--v", LOG_VERBOSITY_LEVEL, "--logtostderr",
 	)
+
+	// Enable mount propagation
+	if err = CheckMountPropagation(); err != nil {
+		glog.Infof("Turning mount propagation off: %v", err)
+		// Just don't add --experimental-mount-propagation and that's it.
+	} else {
+		glog.Infof("Turning mount propagation on")
+		cmdArgs = append(cmdArgs, "--experimental-mount-propagation", "true")
+	}
+
 	// Enable kubenet by default.
 	cniBinDir, err := getCNIBinDirectory()
 	if err != nil {
@@ -284,4 +295,43 @@ func adjustArgsForSystemd(args []string) {
 		args[i] = strings.Replace(args[i], "%", "%%", -1)
 		args[i] = strings.Replace(args[i], "$", "$$", -1)
 	}
+}
+
+// CheckMountPropagation returns error if the host operating system looks
+// like it desn't support mount propagation.
+func CheckMountPropagation() error {
+	// Docker <= 1.12 runs docker daemon in a slave mount namespace ->
+	// no mount propagation.
+	const minimalMajor = 1
+	const minimalMinor = 13
+
+	cmd := exec.Command("docker", "version", "-f", "{{.Server.Version}}")
+	out, err := cmd.Output()
+	if err != nil {
+		// Something failed, probably no docker on the host. Assume it does not
+		// support mount propagation.
+		return fmt.Errorf("error running 'docker version': %v", err)
+	}
+	version := string(out)
+	components := strings.Split(version, ".")
+	if len(components) < 2 {
+		return fmt.Errorf("error parsing docker version %q: expected at least minor.major numbers", version)
+	}
+	major, err := strconv.Atoi(components[0])
+	if err != nil {
+		return fmt.Errorf("error parsing the major part of docker version %q: %v", version, err)
+	}
+	if major > minimalMajor {
+		// version 2 and later do support mount propagation
+		return nil
+	}
+	minor, err := strconv.Atoi(components[1])
+	if err != nil {
+		return fmt.Errorf("error parsing the minor part of docker version %q: %v", version, err)
+	}
+	if minor < minimalMinor {
+		// version 1.12 and lower runs docker daemon in a slave namespace
+		return fmt.Errorf("docker version %q is too low, at least %d.%d is requires", version, minimalMajor, minimalMinor)
+	}
+	return nil
 }
