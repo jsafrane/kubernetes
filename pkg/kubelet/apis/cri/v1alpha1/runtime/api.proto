@@ -86,6 +86,13 @@ service RuntimeService {
     rpc Status(StatusRequest) returns (StatusResponse) {}
 }
 
+// ExecService defines the public APIs for remote command execution.
+// It is a subsed of RuntimeService dedicated only to Exec calls.
+service ExecService {
+    // ExecSync runs a command in a container synchronously.
+    rpc ExecSync(ExecSyncRequest) returns (ExecSyncResponse) {}
+}
+
 // ImageService defines the public APIs for managing images.
 service ImageService {
     // ListImages lists existing images.
