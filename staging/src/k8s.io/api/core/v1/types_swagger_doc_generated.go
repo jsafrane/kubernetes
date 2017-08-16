@@ -1971,11 +1971,12 @@ func (Volume) SwaggerDoc() map[string]string {
 }
 
 var map_VolumeMount = map[string]string{
-	"":          "VolumeMount describes a mounting of a Volume within a container.",
-	"name":      "This must match the Name of a Volume.",
-	"readOnly":  "Mounted read-only if true, read-write otherwise (false or unspecified). Defaults to false.",
-	"mountPath": "Path within the container at which the volume should be mounted.  Must not contain ':'.",
-	"subPath":   "Path within the volume from which the container's volume should be mounted. Defaults to \"\" (volume's root).",
+	"":                 "VolumeMount describes a mounting of a Volume within a container.",
+	"name":             "This must match the Name of a Volume.",
+	"readOnly":         "Mounted read-only if true, read-write otherwise (false or unspecified). Defaults to false.",
+	"mountPath":        "Path within the container at which the volume should be mounted.  Must not contain ':'.",
+	"subPath":          "Path within the volume from which the container's volume should be mounted. Defaults to \"\" (volume's root).",
+	"mountPropagation": "mountPropagation is the mode how are mounts in the volume propagated from the host to the container and from the container to the host. When not set, MountPropagationHostToContainer is used. This field is alpha in 1.8 and can be reworked or removed in a future release. Optional.",
 }
 
 func (VolumeMount) SwaggerDoc() map[string]string {

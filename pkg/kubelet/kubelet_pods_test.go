@@ -42,6 +42,7 @@ import (
 	// api.Registry.GroupOrDie(v1.GroupName).GroupVersion.String() is changed
 	// to "v1"?
 	_ "k8s.io/kubernetes/pkg/api/install"
+	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	containertest "k8s.io/kubernetes/pkg/kubelet/container/testing"
 	"k8s.io/kubernetes/pkg/kubelet/server/portforward"
@@ -49,6 +50,10 @@ import (
 )
 
 func TestMakeMounts(t *testing.T) {
+	bTrue := true
+	propagationHostToContainer := v1.MountPropagationHostToContainer
+	propagationBidirectional := v1.MountPropagationBidirectional
+
 	testCases := map[string]struct {
 		container      v1.Container
 		podVolumes     kubecontainer.VolumeMap
@@ -56,18 +61,20 @@ func TestMakeMounts(t *testing.T) {
 		expectedErrMsg string
 		expectedMounts []kubecontainer.Mount
 	}{
-		"valid mounts": {
+		"valid mounts in unprivileged container": {
 			podVolumes: kubecontainer.VolumeMap{
 				"disk":  kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/mnt/disk"}},
 				"disk4": kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/mnt/host"}},
 				"disk5": kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/var/lib/kubelet/podID/volumes/empty/disk5"}},
 			},
 			container: v1.Container{
+				Name: "container1",
 				VolumeMounts: []v1.VolumeMount{
 					{
-						MountPath: "/etc/hosts",
-						Name:      "disk",
-						ReadOnly:  false,
+						MountPath:        "/etc/hosts",
+						Name:             "disk",
+						ReadOnly:         false,
+						MountPropagation: &propagationHostToContainer,
 					},
 					{
 						MountPath: "/mnt/path3",
@@ -93,6 +100,7 @@ func TestMakeMounts(t *testing.T) {
 					HostPath:       "/mnt/disk",
 					ReadOnly:       false,
 					SELinuxRelabel: false,
+					Propagation:    runtimeapi.MountPropagation_PROPAGATION_HOST_TO_CONTAINER,
 				},
 				{
 					Name:           "disk",
@@ -100,6 +108,7 @@ func TestMakeMounts(t *testing.T) {
 					HostPath:       "/mnt/disk",
 					ReadOnly:       true,
 					SELinuxRelabel: false,
+					Propagation:    runtimeapi.MountPropagation_PROPAGATION_HOST_TO_CONTAINER,
 				},
 				{
 					Name:           "disk4",
@@ -107,6 +116,7 @@ func TestMakeMounts(t *testing.T) {
 					HostPath:       "/mnt/host",
 					ReadOnly:       false,
 					SELinuxRelabel: false,
+					Propagation:    runtimeapi.MountPropagation_PROPAGATION_HOST_TO_CONTAINER,
 				},
 				{
 					Name:           "disk5",
@@ -114,6 +124,66 @@ func TestMakeMounts(t *testing.T) {
 					HostPath:       "/var/lib/kubelet/podID/volumes/empty/disk5",
 					ReadOnly:       false,
 					SELinuxRelabel: false,
+					Propagation:    runtimeapi.MountPropagation_PROPAGATION_HOST_TO_CONTAINER,
+				},
+			},
+			expectErr: false,
+		},
+		"valid mounts in privileged container": {
+			podVolumes: kubecontainer.VolumeMap{
+				"disk":  kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/mnt/disk"}},
+				"disk4": kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/mnt/host"}},
+				"disk5": kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/var/lib/kubelet/podID/volumes/empty/disk5"}},
+			},
+			container: v1.Container{
+				Name: "container1",
+				VolumeMounts: []v1.VolumeMount{
+					{
+						MountPath:        "/etc/hosts",
+						Name:             "disk",
+						ReadOnly:         false,
+						MountPropagation: &propagationBidirectional,
+					},
+					{
+						MountPath:        "/mnt/path3",
+						Name:             "disk",
+						ReadOnly:         true,
+						MountPropagation: &propagationHostToContainer,
+					},
+					{
+						MountPath: "/mnt/path4",
+						Name:      "disk4",
+						ReadOnly:  false,
+					},
+				},
+				SecurityContext: &v1.SecurityContext{
+					Privileged: &bTrue,
+				},
+			},
+			expectedMounts: []kubecontainer.Mount{
+				{
+					Name:           "disk",
+					ContainerPath:  "/etc/hosts",
+					HostPath:       "/mnt/disk",
+					ReadOnly:       false,
+					SELinuxRelabel: false,
+					Propagation:    runtimeapi.MountPropagation_PROPAGATION_BIDIRECTIONAL,
+				},
+				{
+					Name:           "disk",
+					ContainerPath:  "/mnt/path3",
+					HostPath:       "/mnt/disk",
+					ReadOnly:       true,
+					SELinuxRelabel: false,
+					Propagation:    runtimeapi.MountPropagation_PROPAGATION_HOST_TO_CONTAINER,
+				},
+				{
+					Name:           "disk4",
+					ContainerPath:  "/mnt/path4",
+					HostPath:       "/mnt/host",
+					ReadOnly:       false,
+					SELinuxRelabel: false,
+					Propagation:    runtimeapi.MountPropagation_PROPAGATION_HOST_TO_CONTAINER,
 				},
 			},
 			expectErr: false,
@@ -162,7 +232,7 @@ func TestMakeMounts(t *testing.T) {
 				},
 			}
 
-			mounts, err := makeMounts(&pod, "/pod", &tc.container, "fakepodname", "", "", tc.podVolumes)
+			mounts, err := makeMounts(&pod, "/pod", &tc.container, "fakepodname", "", "", tc.podVolumes, true /* enableMountPropagation */)
 
 			// validate only the error if we expect an error
 			if tc.expectErr {
@@ -178,6 +248,17 @@ func TestMakeMounts(t *testing.T) {
 			}
 
 			assert.Equal(t, tc.expectedMounts, mounts, "mounts of container %+v", tc.container)
+
+			// test makeMounts with disabled mount propagation
+			mounts, err = makeMounts(&pod, "/pod", &tc.container, "fakepodname", "", "", tc.podVolumes, false /* enableMountPropagation */)
+			if !tc.expectErr {
+				expectedPrivateMounts := []kubecontainer.Mount{}
+				for _, mount := range tc.expectedMounts {
+					mount.Propagation = runtimeapi.MountPropagation_PROPAGATION_PRIVATE
+					expectedPrivateMounts = append(expectedPrivateMounts, mount)
+				}
+				assert.Equal(t, expectedPrivateMounts, mounts, "mounts of container %+v", tc.container)
+			}
 		})
 	}
 }

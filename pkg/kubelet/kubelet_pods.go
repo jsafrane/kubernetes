@@ -41,6 +41,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilvalidation "k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/kubernetes/pkg/api"
 	v1helper "k8s.io/kubernetes/pkg/api/v1/helper"
@@ -48,7 +49,9 @@ import (
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/api/v1/resource"
 	"k8s.io/kubernetes/pkg/api/v1/validation"
+	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/fieldpath"
+	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/envvars"
@@ -108,7 +111,7 @@ func (kl *Kubelet) makeDevices(pod *v1.Pod, container *v1.Container) ([]kubecont
 }
 
 // makeMounts determines the mount points for the given container.
-func makeMounts(pod *v1.Pod, podDir string, container *v1.Container, hostName, hostDomain, podIP string, podVolumes kubecontainer.VolumeMap) ([]kubecontainer.Mount, error) {
+func makeMounts(pod *v1.Pod, podDir string, container *v1.Container, hostName, hostDomain, podIP string, podVolumes kubecontainer.VolumeMap, enableMountPropagation bool) ([]kubecontainer.Mount, error) {
 	// Kubernetes only mounts on /etc/hosts if:
 	// - container is not an infrastructure (pause) container
 	// - container is not already mounting on /etc/hosts
@@ -188,12 +191,32 @@ func makeMounts(pod *v1.Pod, podDir string, container *v1.Container, hostName, h
 			}
 		}
 
+		var propagation runtimeapi.MountPropagation
+		if enableMountPropagation {
+			switch {
+			case mount.MountPropagation == nil:
+				// HostToContainer is the default
+				propagation = runtimeapi.MountPropagation_PROPAGATION_HOST_TO_CONTAINER
+			case *mount.MountPropagation == v1.MountPropagationHostToContainer:
+				propagation = runtimeapi.MountPropagation_PROPAGATION_HOST_TO_CONTAINER
+			case *mount.MountPropagation == v1.MountPropagationBidirectional:
+				propagation = runtimeapi.MountPropagation_PROPAGATION_BIDIRECTIONAL
+			default:
+				return nil, fmt.Errorf("Invalid MountPropagation mode: %q", mount.MountPropagation)
+			}
+		} else {
+			// mount propagation is disabled, use private as in the old versions
+			propagation = runtimeapi.MountPropagation_PROPAGATION_PRIVATE
+		}
+		glog.V(5).Infof("Pod %s/%s container %s mount %s has propagation %s", pod.Namespace, pod.Name, container.Name, mount.Name, propagation)
+
 		mounts = append(mounts, kubecontainer.Mount{
 			Name:           mount.Name,
 			ContainerPath:  containerPath,
 			HostPath:       hostPath,
 			ReadOnly:       mount.ReadOnly,
 			SELinuxRelabel: relabelVolume,
+			Propagation:    propagation,
 		})
 	}
 	if mountEtcHostsFile {
@@ -352,7 +375,8 @@ func (kl *Kubelet) GenerateRunContainerOptions(pod *v1.Pod, container *v1.Contai
 		return nil, false, err
 	}
 
-	opts.Mounts, err = makeMounts(pod, kl.getPodDir(pod.UID), container, hostname, hostDomainName, podIP, volumes)
+	mountPropagationEnabled := utilfeature.DefaultFeatureGate.Enabled(features.MountPropagation)
+	opts.Mounts, err = makeMounts(pod, kl.getPodDir(pod.UID), container, hostname, hostDomainName, podIP, volumes, mountPropagationEnabled)
 	if err != nil {
 		return nil, false, err
 	}

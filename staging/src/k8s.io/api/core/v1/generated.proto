@@ -3973,6 +3973,14 @@ message VolumeMount {
   // Defaults to "" (volume's root).
   // +optional
   optional string subPath = 4;
+
+  // mountPropagation is the mode how are mounts in the volume propagated from
+  // the host to the container and from the container to the host.
+  // When not set, MountPropagationHostToContainer is used.
+  // This field is alpha in 1.8 and can be reworked or removed in a future
+  // release.
+  // Optional.
+  optional string mountPropagation = 5;
 }
 
 // Projection that may be projected along with other supported volume types
