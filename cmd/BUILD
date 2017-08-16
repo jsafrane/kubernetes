@@ -32,6 +32,7 @@ filegroup(
         "//cmd/kubemark:all-srcs",
         "//cmd/linkcheck:all-srcs",
         "//cmd/mungedocs:all-srcs",
+        "//cmd/volumeexec:all-srcs",
     ],
     tags = ["automanaged"],
 )
