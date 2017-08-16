@@ -17,18 +17,29 @@ limitations under the License.
 package kubelet
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"os"
+	"path"
+	"strings"
+	"time"
+
+	"google.golang.org/grpc"
+
+	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/pkg/cloudprovider"
+	"k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 	"k8s.io/kubernetes/pkg/kubelet/configmap"
 	"k8s.io/kubernetes/pkg/kubelet/secret"
 	"k8s.io/kubernetes/pkg/util/io"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume"
+	"k8s.io/utils/exec"
 )
 
 // NewInitializedVolumePluginMgr returns a new instance of
@@ -118,6 +129,18 @@ func (kvh *kubeletVolumeHost) GetCloudProvider() cloudprovider.Interface {
 }
 
 func (kvh *kubeletVolumeHost) GetMounter(pluginName string) mount.Interface {
+	glog.Infof("JSAF: GetMounter for %s called", pluginName)
+	socketPath := GetVolumePluginSocketPath(kvh.kubelet.getRootDir(), pluginName)
+	if info, err := os.Stat(socketPath); err == nil && info.Mode()&os.ModeSocket > 0 {
+		glog.Infof("JSAF: GetMounter for %s socket found", pluginName)
+		exec, err := newGrpcExec(socketPath)
+		if err != nil {
+			glog.Infof("JSAF: GetMounter for %s socket error %v", pluginName, err)
+			exec = &errorExec{err}
+		}
+		return mount.NewExecMounter(exec, kvh.kubelet.mounter)
+	}
+	glog.Infof("JSAF: GetMounter for %s fallback", pluginName)
 	return kvh.kubelet.mounter
 }
 
@@ -158,5 +181,75 @@ func (kvh *kubeletVolumeHost) GetNodeLabels() (map[string]string, error) {
 }
 
 func (kvh *kubeletVolumeHost) GetExec(pluginName string) mount.Exec {
+	socketPath := GetVolumePluginSocketPath(kvh.kubelet.getRootDir(), pluginName)
+	if info, err := os.Stat(socketPath); err == nil && info.Mode()&os.ModeSocket > 0 {
+		exec, err := newGrpcExec(socketPath)
+		if err != nil {
+			return &errorExec{err}
+		}
+		return exec
+	}
 	return mount.NewOsExec()
+}
+
+func GetVolumePluginSocketPath(rootDir string, pluginName string) string {
+	// sanitize plugin name so it does not escape directory
+	p := strings.Replace(pluginName, "/", "~", -1)
+	return path.Join(rootDir, "plugin-sockets", p)
+}
+
+// errorExec is dummy mount.Exec implemetation that blindly returns given error.
+type errorExec struct {
+	err error
+}
+
+var _ mount.Exec = &errorExec{}
+
+func (e *errorExec) Run(cmd string, args ...string) ([]byte, error) {
+	return nil, e.err
+}
+
+func dial(socketName string, timeout time.Duration) (net.Conn, error) {
+	glog.Infof("JSAF dialer to %s", socketName)
+	return net.DialTimeout("unix", socketName, timeout)
+}
+
+// New returns new Exec interface that executes all commands via gRPC over
+// given sucket.
+func newGrpcExec(socketName string) (mount.Exec, error) {
+	// TODO: add WithTimeout?
+	conn, err := grpc.Dial(socketName, grpc.WithInsecure(), grpc.WithDialer(dial))
+	if err != nil {
+		return nil, err
+	}
+	client := runtime.NewExecServiceClient(conn)
+	return &grpcExec{
+		client: client,
+	}, nil
+}
+
+type grpcExec struct {
+	client runtime.ExecServiceClient
+}
+
+var _ mount.Exec = &grpcExec{}
+
+func (e *grpcExec) Run(cmd string, args ...string) ([]byte, error) {
+	request := runtime.ExecSyncRequest{
+		Cmd: append([]string{cmd}, args...),
+	}
+	response, err := e.client.ExecSync(context.TODO(), &request)
+	if err != nil {
+		return nil, err
+	}
+	stdout := []byte(response.GetStdout())
+	stderr := []byte(response.GetStderr())
+	out := append(stdout, stderr...)
+	exitCode := response.GetExitCode()
+	if exitCode != 0 {
+		return out, &exec.CodeExitError{
+			Code: int(exitCode),
+			Err:  fmt.Errorf("program finished with exit code %d", exitCode)}
+	}
+	return out, nil
 }
