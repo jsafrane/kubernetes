@@ -222,6 +222,7 @@ func probeAttachedVolume() error {
 	// rescan scsi bus
 	scsiHostRescan()
 
+	// run "udevadm trigger" on the host, not in a mount pod
 	executor := exec.New()
 	args := []string{"trigger"}
 	cmd := executor.Command("udevadm", args...)
