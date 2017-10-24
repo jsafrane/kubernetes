@@ -80,3 +80,95 @@ type StorageClassList struct {
 	// Items is the list of StorageClasses
 	Items []StorageClass
 }
+
+// +genclient
+// +genclient:nonNamespaced
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// Captures the intent to attach or detach the specified volume to/from
+// the specified node.
+//
+// VolumeAttachment objects are non-namespaced.
+type VolumeAttachment struct {
+	metav1.TypeMeta
+
+	// Standard object metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata
+	// +optional
+	metav1.ObjectMeta
+
+	// Specification of the desired attach/detach volume behavior.
+	// Populated by the Kubernetes system.
+	Spec VolumeAttachmentSpec
+
+	// Status of the VolumeAttachment request.
+	// Populated by the entity completing the attach or detach
+	// operation, i.e. the external-attacher.
+	Status VolumeAttachmentStatus
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// VolumeAttachmentList is a collection of VolumeAttachment objects.
+type VolumeAttachmentList struct {
+	metav1.TypeMeta
+	// Standard list metadata
+	// More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata
+	// +optional
+	metav1.ListMeta
+
+	// Items is the list of VolumeAttachments
+	Items []VolumeAttachment
+}
+
+// The specification of a VolumeAttachment request.
+type VolumeAttachmentSpec struct {
+	// The name of the external-attacher that MUST handle
+	// this request.
+	Attacher string
+
+	// The volume to attach.
+	Volume api.VolumeSource
+
+	// The node that the volume should be attached to.
+	NodeName string
+}
+
+// The status of a VolumeAttachment request.
+type VolumeAttachmentStatus struct {
+	// Indicates the volume is successfully attached.
+	// This field must only be set by the entity completing the attach
+	// operation, i.e. the external-attacher.
+	IsAttached bool
+
+	// Upon successful attach, this field is populated with any
+	// information returned by the attach operation that must be passed
+	// into subsequent WaitForAttach or Mount calls.
+	// This field must only be set by the entity completing the attach
+	// operation, i.e. the external-attacher.
+	// +optional
+	AttachmentMetadata map[string]string
+
+	// The last error encountered during attach operation, if any.
+	// This field must only be set by the entity completing the attach
+	// operation, i.e. the external-attacher.
+	// +optional
+	AttachError VolumeError
+
+	// The last error encountered during detach operation, if any.
+	// This field must only be set by the entity completing the detach
+	// operation, i.e. the external-attacher.
+	// +optional
+	DetachError VolumeError
+}
+
+// Captures an error encountered during a volume operation.
+type VolumeError struct {
+	// Time the error was encountered.
+	Time metav1.Time
+
+	// String detailing the error encountered during Attach operation.
+	// This string maybe logged, so it should not contain sensitive
+	// information.
+	Message string
+}

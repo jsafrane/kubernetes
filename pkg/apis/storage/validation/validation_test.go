@@ -157,3 +157,44 @@ func TestAlphaExpandPersistentVolumesFeatureValidation(t *testing.T) {
 	}
 
 }
+func TestVolumeAttachmentValidation(t *testing.T) {
+	successCases := []storage.VolumeAttachment{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "foo"},
+			Spec: storage.VolumeAttachmentSpec{
+				Attacher: "myattacher",
+				NodeName: "mynode",
+			},
+		},
+	}
+
+	for _, volumeAttachment := range successCases {
+		if errs := ValidateVolumeAttachment(&volumeAttachment); len(errs) != 0 {
+			t.Errorf("expected success: %v", errs)
+		}
+	}
+	errorCases := []storage.VolumeAttachment{
+		{
+			// Empty attacher name
+			ObjectMeta: metav1.ObjectMeta{Name: "foo"},
+			Spec: storage.VolumeAttachmentSpec{
+				Attacher: "",
+				NodeName: "mynode",
+			},
+		},
+		{
+			// Empty node name
+			ObjectMeta: metav1.ObjectMeta{Name: "foo"},
+			Spec: storage.VolumeAttachmentSpec{
+				Attacher: "myattacher",
+				NodeName: "",
+			},
+		},
+	}
+
+	for _, volumeAttachment := range errorCases {
+		if errs := ValidateVolumeAttachment(&volumeAttachment); len(errs) == 0 {
+			t.Errorf("Expected failure for test: %v", volumeAttachment)
+		}
+	}
+}

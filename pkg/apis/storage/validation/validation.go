@@ -121,3 +121,51 @@ func validateAllowVolumeExpansion(allowExpand *bool, fldPath *field.Path) field.
 	}
 	return allErrs
 }
+
+// ValidateVolumeAttachment validates a VolumeAttachment.
+func ValidateVolumeAttachment(volumeAttachment *storage.VolumeAttachment) field.ErrorList {
+	allErrs := apivalidation.ValidateObjectMeta(&volumeAttachment.ObjectMeta, false, apivalidation.ValidateClassName, field.NewPath("metadata"))
+	allErrs = append(allErrs, validateVolumeAttachmentSpec(&volumeAttachment.Spec, field.NewPath("spec"))...)
+	return allErrs
+}
+
+// ValidateVolumeAttachmentSpec tests that the specified VolumeAttachmentSpec
+// has valid data.
+func validateVolumeAttachmentSpec(
+	spec *storage.VolumeAttachmentSpec, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	allErrs = append(allErrs, validateAttacher(spec.Attacher, fldPath.Child("attacher"))...)
+	allErrs = append(allErrs, validateVolumeSource(&spec.Volume, fldPath.Child("volumeSource"))...)
+	allErrs = append(allErrs, validateNodeName(spec.NodeName, fldPath.Child("nodeName"))...)
+	return allErrs
+}
+
+// validateAttacher tests if attacher is a valid qualified name.
+func validateAttacher(attacher string, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if len(attacher) == 0 {
+		allErrs = append(allErrs, field.Required(fldPath, attacher))
+	}
+	if len(attacher) > 0 {
+		for _, msg := range validation.IsQualifiedName(strings.ToLower(attacher)) {
+			allErrs = append(allErrs, field.Invalid(fldPath, attacher, msg))
+		}
+	}
+	return allErrs
+}
+
+// validateVolumeSource tests if the volumeSource is valid for VolumeAttachment.
+func validateVolumeSource(volumeSource *api.VolumeSource, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	// TODO: verify CSI Volume Source only -- expand in the future
+	return allErrs
+}
+
+// validateNodeName tests if the nodeName is valid for VolumeAttachment.
+func validateNodeName(nodeName string, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	for _, msg := range apivalidation.ValidateNodeName(nodeName, false /* prefix */) {
+		allErrs = append(allErrs, field.Invalid(fldPath, nodeName, msg))
+	}
+	return allErrs
+}
