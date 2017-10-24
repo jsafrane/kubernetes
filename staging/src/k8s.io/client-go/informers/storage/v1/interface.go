@@ -26,6 +26,8 @@ import (
 type Interface interface {
 	// StorageClasses returns a StorageClassInformer.
 	StorageClasses() StorageClassInformer
+	// VolumeAttachments returns a VolumeAttachmentInformer.
+	VolumeAttachments() VolumeAttachmentInformer
 }
 
 type version struct {
@@ -40,4 +42,9 @@ func New(f internalinterfaces.SharedInformerFactory) Interface {
 // StorageClasses returns a StorageClassInformer.
 func (v *version) StorageClasses() StorageClassInformer {
 	return &storageClassInformer{factory: v.SharedInformerFactory}
+}
+
+// VolumeAttachments returns a VolumeAttachmentInformer.
+func (v *version) VolumeAttachments() VolumeAttachmentInformer {
+	return &volumeAttachmentInformer{factory: v.SharedInformerFactory}
 }

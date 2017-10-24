@@ -51,4 +51,58 @@ func (StorageClassList) SwaggerDoc() map[string]string {
 	return map_StorageClassList
 }
 
+var map_VolumeAttachment = map[string]string{
+	"":         "Captures the intent to attach or detach the specified volume to/from the specified node.\n\nVolumeAttachment objects are non-namespaced.",
+	"metadata": "Standard object metadata. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata",
+	"spec":     "Specification of the desired attach/detach volume behavior. Populated by the Kubernetes system.",
+	"status":   "Status of the VolumeAttachment request. Populated by the entity completing the attach or detach operation, i.e. the external-attacher.",
+}
+
+func (VolumeAttachment) SwaggerDoc() map[string]string {
+	return map_VolumeAttachment
+}
+
+var map_VolumeAttachmentList = map[string]string{
+	"":         "VolumeAttachmentList is a collection of VolumeAttachment objects.",
+	"metadata": "Standard list metadata More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata",
+	"items":    "Items is the list of VolumeAttachments",
+}
+
+func (VolumeAttachmentList) SwaggerDoc() map[string]string {
+	return map_VolumeAttachmentList
+}
+
+var map_VolumeAttachmentSpec = map[string]string{
+	"":         "The specification of a VolumeAttachment request.",
+	"attacher": "The name of the external-attacher that MUST handle this request.",
+	"volume":   "The volume to attach.",
+	"nodeName": "The node that the volume should be attached to.",
+}
+
+func (VolumeAttachmentSpec) SwaggerDoc() map[string]string {
+	return map_VolumeAttachmentSpec
+}
+
+var map_VolumeAttachmentStatus = map[string]string{
+	"":                   "The status of a VolumeAttachment request.",
+	"isAttached":         "Indicates the volume is successfully attached. This field must only be set by the entity completing the attach operation, i.e. the external-attacher.",
+	"attachmentMetadata": "Upon successful attach, this field is populated with any information returned by the attach operation that must be passed into subsequent WaitForAttach or Mount calls. This field must only be set by the entity completing the attach operation, i.e. the external-attacher.",
+	"attachError":        "The last error encountered during attach operation, if any. This field must only be set by the entity completing the attach operation, i.e. the external-attacher.",
+	"detachError":        "The last error encountered during detach operation, if any. This field must only be set by the entity completing the detach operation, i.e. the external-attacher.",
+}
+
+func (VolumeAttachmentStatus) SwaggerDoc() map[string]string {
+	return map_VolumeAttachmentStatus
+}
+
+var map_VolumeError = map[string]string{
+	"":        "Captures an error encountered during a volume operation.",
+	"time":    "Time the error was encountered.",
+	"Message": "String detailing the error encountered during Attach operation. This string maybe logged, so it should not contain sensitive information.",
+}
+
+func (VolumeError) SwaggerDoc() map[string]string {
+	return map_VolumeError
+}
+
 // AUTO-GENERATED FUNCTIONS END HERE

@@ -23,6 +23,7 @@ package v1
 import (
 	v1 "k8s.io/api/storage/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
+	api_v1 "k8s.io/kubernetes/pkg/api/v1"
 )
 
 // RegisterDefaults adds defaulters functions to the given scheme.
@@ -31,6 +32,8 @@ import (
 func RegisterDefaults(scheme *runtime.Scheme) error {
 	scheme.AddTypeDefaultingFunc(&v1.StorageClass{}, func(obj interface{}) { SetObjectDefaults_StorageClass(obj.(*v1.StorageClass)) })
 	scheme.AddTypeDefaultingFunc(&v1.StorageClassList{}, func(obj interface{}) { SetObjectDefaults_StorageClassList(obj.(*v1.StorageClassList)) })
+	scheme.AddTypeDefaultingFunc(&v1.VolumeAttachment{}, func(obj interface{}) { SetObjectDefaults_VolumeAttachment(obj.(*v1.VolumeAttachment)) })
+	scheme.AddTypeDefaultingFunc(&v1.VolumeAttachmentList{}, func(obj interface{}) { SetObjectDefaults_VolumeAttachmentList(obj.(*v1.VolumeAttachmentList)) })
 	return nil
 }
 
@@ -42,5 +45,59 @@ func SetObjectDefaults_StorageClassList(in *v1.StorageClassList) {
 	for i := range in.Items {
 		a := &in.Items[i]
 		SetObjectDefaults_StorageClass(a)
+	}
+}
+
+func SetObjectDefaults_VolumeAttachment(in *v1.VolumeAttachment) {
+	if in.Spec.Volume.HostPath != nil {
+		api_v1.SetDefaults_HostPathVolumeSource(in.Spec.Volume.HostPath)
+	}
+	if in.Spec.Volume.Secret != nil {
+		api_v1.SetDefaults_SecretVolumeSource(in.Spec.Volume.Secret)
+	}
+	if in.Spec.Volume.ISCSI != nil {
+		api_v1.SetDefaults_ISCSIVolumeSource(in.Spec.Volume.ISCSI)
+	}
+	if in.Spec.Volume.RBD != nil {
+		api_v1.SetDefaults_RBDVolumeSource(in.Spec.Volume.RBD)
+	}
+	if in.Spec.Volume.DownwardAPI != nil {
+		api_v1.SetDefaults_DownwardAPIVolumeSource(in.Spec.Volume.DownwardAPI)
+		for i := range in.Spec.Volume.DownwardAPI.Items {
+			a := &in.Spec.Volume.DownwardAPI.Items[i]
+			if a.FieldRef != nil {
+				api_v1.SetDefaults_ObjectFieldSelector(a.FieldRef)
+			}
+		}
+	}
+	if in.Spec.Volume.ConfigMap != nil {
+		api_v1.SetDefaults_ConfigMapVolumeSource(in.Spec.Volume.ConfigMap)
+	}
+	if in.Spec.Volume.AzureDisk != nil {
+		api_v1.SetDefaults_AzureDiskVolumeSource(in.Spec.Volume.AzureDisk)
+	}
+	if in.Spec.Volume.Projected != nil {
+		api_v1.SetDefaults_ProjectedVolumeSource(in.Spec.Volume.Projected)
+		for i := range in.Spec.Volume.Projected.Sources {
+			a := &in.Spec.Volume.Projected.Sources[i]
+			if a.DownwardAPI != nil {
+				for j := range a.DownwardAPI.Items {
+					b := &a.DownwardAPI.Items[j]
+					if b.FieldRef != nil {
+						api_v1.SetDefaults_ObjectFieldSelector(b.FieldRef)
+					}
+				}
+			}
+		}
+	}
+	if in.Spec.Volume.ScaleIO != nil {
+		api_v1.SetDefaults_ScaleIOVolumeSource(in.Spec.Volume.ScaleIO)
+	}
+}
+
+func SetObjectDefaults_VolumeAttachmentList(in *v1.VolumeAttachmentList) {
+	for i := range in.Items {
+		a := &in.Items[i]
+		SetObjectDefaults_VolumeAttachment(a)
 	}
 }
