@@ -222,6 +222,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		// Group=Storage, Version=V1
 	case storage_v1.SchemeGroupVersion.WithResource("storageclasses"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Storage().V1().StorageClasses().Informer()}, nil
+	case storage_v1.SchemeGroupVersion.WithResource("volumeattachments"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Storage().V1().VolumeAttachments().Informer()}, nil
 
 		// Group=Storage, Version=V1beta1
 	case storage_v1beta1.SchemeGroupVersion.WithResource("storageclasses"):
