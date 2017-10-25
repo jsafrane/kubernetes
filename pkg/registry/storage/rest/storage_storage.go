@@ -26,6 +26,7 @@ import (
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	storageapi "k8s.io/kubernetes/pkg/apis/storage"
 	storageclassstore "k8s.io/kubernetes/pkg/registry/storage/storageclass/storage"
+	volumeattachmentstore "k8s.io/kubernetes/pkg/registry/storage/volumeattachment/storage"
 )
 
 type RESTStorageProvider struct {
@@ -57,7 +58,6 @@ func (p RESTStorageProvider) v1beta1Storage(apiResourceConfigSource serverstorag
 		storageClassStorage := storageclassstore.NewREST(restOptionsGetter)
 		storage["storageclasses"] = storageClassStorage
 	}
-
 	return storage
 }
 
@@ -69,6 +69,10 @@ func (p RESTStorageProvider) v1Storage(apiResourceConfigSource serverstorage.API
 	if apiResourceConfigSource.ResourceEnabled(version.WithResource("storageclasses")) {
 		storageClassStorage := storageclassstore.NewREST(restOptionsGetter)
 		storage["storageclasses"] = storageClassStorage
+	}
+	if apiResourceConfigSource.ResourceEnabled(version.WithResource("volumeattachments")) {
+		volumeAttachmentStorage := volumeattachmentstore.NewREST(restOptionsGetter)
+		storage["volumeattachments"] = volumeAttachmentStorage
 	}
 
 	return storage

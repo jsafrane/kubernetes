@@ -39,7 +39,7 @@ func Install(groupFactoryRegistry announced.APIGroupFactoryRegistry, registry *r
 		&announced.GroupMetaFactoryArgs{
 			GroupName:                  storage.GroupName,
 			VersionPreferenceOrder:     []string{v1.SchemeGroupVersion.Version, v1beta1.SchemeGroupVersion.Version},
-			RootScopedKinds:            sets.NewString("StorageClass"),
+			RootScopedKinds:            sets.NewString("StorageClass", "VolumeAttachment"),
 			AddInternalObjectsToScheme: storage.AddToScheme,
 		},
 		announced.VersionToSchemeFunc{
