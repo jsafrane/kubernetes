@@ -1067,6 +1067,14 @@ func printFlockerVolumeSource(flocker *api.FlockerVolumeSource, w PrefixWriter) 
 		flocker.DatasetName, flocker.DatasetUUID)
 }
 
+func printCSIPersistentVolumeSource(csi *api.CSIPersistentVolumeSource, w PrefixWriter) {
+	w.Write(LEVEL_2, "Type:\tCSIVolume (a generic volume resource that represents a volume managed by an external CSI plugin)\n"+
+		"    Driver:\t%v\n"+
+		"    VolumeHandle:\t%v\n",
+		"    ReadOnly:\t%v\n",
+		csi.Driver, csi.VolumeHandle, csi.ReadOnly)
+}
+
 type PersistentVolumeDescriber struct {
 	clientset.Interface
 }
@@ -1150,6 +1158,8 @@ func describePersistentVolume(pv *api.PersistentVolume, events *api.EventList) (
 			printFlexVolumeSource(pv.Spec.FlexVolume, w)
 		case pv.Spec.Flocker != nil:
 			printFlockerVolumeSource(pv.Spec.Flocker, w)
+		case pv.Spec.CSI != nil:
+			printCSIPersistentVolumeSource(pv.Spec.CSI, w)
 		default:
 			w.Write(LEVEL_1, "<unknown>\n")
 		}
