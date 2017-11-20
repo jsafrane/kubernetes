@@ -244,7 +244,8 @@ func (rc *reconciler) reconcile() {
 				rc.waitForAttachTimeout,
 				volumeToMount.VolumeToMount,
 				rc.actualStateOfWorld,
-				isRemount)
+				isRemount,
+				rc.mounter)
 			if err != nil &&
 				!nestedpendingoperations.IsAlreadyExists(err) &&
 				!exponentialbackoff.IsExponentialBackoff(err) {

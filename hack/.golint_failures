@@ -358,6 +358,7 @@ pkg/util/oom
 pkg/util/parsers
 pkg/util/procfs
 pkg/util/removeall
+pkg/util/resizefs
 pkg/util/resourcecontainer
 pkg/util/rlimit
 pkg/util/selinux

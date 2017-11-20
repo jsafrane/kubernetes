@@ -50,6 +50,7 @@ func TestOperationExecutor_MountVolume_ConcurrentMountForNonAttachablePlugins(t 
 	volumesToMount := make([]VolumeToMount, numVolumesToMount)
 	secretName := "secret-volume"
 	volumeName := v1.UniqueVolumeName(secretName)
+	mounter := &mount.FakeMounter{}
 
 	// Act
 	for i := range volumesToMount {
@@ -61,7 +62,7 @@ func TestOperationExecutor_MountVolume_ConcurrentMountForNonAttachablePlugins(t 
 			PluginIsAttachable: false, // this field determines whether the plugin is attachable
 			ReportedInUse:      true,
 		}
-		oe.MountVolume(0 /* waitForAttachTimeOut */, volumesToMount[i], nil /* actualStateOfWorldMounterUpdater */, false /* isRemount */)
+		oe.MountVolume(0 /* waitForAttachTimeOut */, volumesToMount[i], nil /* actualStateOfWorldMounterUpdater */, false /* isRemount */, mounter)
 	}
 
 	// Assert
@@ -76,7 +77,7 @@ func TestOperationExecutor_MountVolume_ConcurrentMountForAttachablePlugins(t *te
 	volumesToMount := make([]VolumeToMount, numVolumesToAttach)
 	pdName := "pd-volume"
 	volumeName := v1.UniqueVolumeName(pdName)
-
+	mounter := &mount.FakeMounter{}
 	// Act
 	for i := range volumesToMount {
 		podName := "pod-" + strconv.Itoa((i + 1))
@@ -87,7 +88,7 @@ func TestOperationExecutor_MountVolume_ConcurrentMountForAttachablePlugins(t *te
 			PluginIsAttachable: true, // this field determines whether the plugin is attachable
 			ReportedInUse:      true,
 		}
-		oe.MountVolume(0 /* waitForAttachTimeout */, volumesToMount[i], nil /* actualStateOfWorldMounterUpdater */, false /* isRemount */)
+		oe.MountVolume(0 /* waitForAttachTimeout */, volumesToMount[i], nil /* actualStateOfWorldMounterUpdater */, false /* isRemount */, mounter)
 	}
 
 	// Assert
@@ -240,7 +241,7 @@ func newFakeOperationGenerator(ch chan interface{}, quit chan interface{}) Opera
 	}
 }
 
-func (fopg *fakeOperationGenerator) GenerateMountVolumeFunc(waitForAttachTimeout time.Duration, volumeToMount VolumeToMount, actualStateOfWorldMounterUpdater ActualStateOfWorldMounterUpdater, isRemount bool) (func() error, string, error) {
+func (fopg *fakeOperationGenerator) GenerateMountVolumeFunc(waitForAttachTimeout time.Duration, volumeToMount VolumeToMount, actualStateOfWorldMounterUpdater ActualStateOfWorldMounterUpdater, isRemount bool, mounter mount.Interface) (func() error, string, error) {
 	return func() error {
 		startOperationAndBlock(fopg.ch, fopg.quit)
 		return nil
