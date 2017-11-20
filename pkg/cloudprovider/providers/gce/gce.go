@@ -738,21 +738,3 @@ func newOauthClient(tokenSource oauth2.TokenSource) (*http.Client, error) {
 
 	return oauth2.NewClient(oauth2.NoContext, tokenSource), nil
 }
-
-func (manager *gceServiceManager) getProjectsAPIEndpoint() string {
-	projectsApiEndpoint := gceComputeAPIEndpoint + "projects/"
-	if manager.gce.service != nil {
-		projectsApiEndpoint = manager.gce.service.BasePath
-	}
-
-	return projectsApiEndpoint
-}
-
-func (manager *gceServiceManager) getProjectsAPIEndpointAlpha() string {
-	projectsApiEndpoint := gceComputeAPIEndpointAlpha + "projects/"
-	if manager.gce.service != nil {
-		projectsApiEndpoint = manager.gce.serviceAlpha.BasePath
-	}
-
-	return projectsApiEndpoint
-}

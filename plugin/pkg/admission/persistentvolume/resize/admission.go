@@ -149,9 +149,10 @@ func (pvcr *persistentVolumeClaimResize) allowResize(pvc, oldPvc *api.Persistent
 
 // checkVolumePlugin checks whether the volume plugin supports resize
 func (pvcr *persistentVolumeClaimResize) checkVolumePlugin(pv *api.PersistentVolume) bool {
-	if pv.Spec.Glusterfs != nil {
+	if pv.Spec.Glusterfs != nil || pv.Spec.GCEPersistentDisk != nil {
 		return true
 	}
+
 	return false
 
 }
