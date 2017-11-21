@@ -48,7 +48,7 @@ func (resizefs *ResizeFs) Resize(devicePath string) (bool, error) {
 	format, err := resizefs.mounter.GetDiskFormat(devicePath)
 
 	if err != nil {
-		formatErr := fmt.Errorf("Error checking format for device %s with %v", devicePath, err)
+		formatErr := fmt.Errorf("error checking format for device %s: %v", devicePath, err)
 		return false, formatErr
 	}
 
@@ -59,12 +59,12 @@ func (resizefs *ResizeFs) Resize(devicePath string) (bool, error) {
 	deviceOpened, err := resizefs.mounter.DeviceOpened(devicePath)
 
 	if err != nil {
-		deviceOpenErr := fmt.Errorf("Error verifying if device %s is open : %v", devicePath, err)
+		deviceOpenErr := fmt.Errorf("error verifying if device %s is open: %v", devicePath, err)
 		return false, deviceOpenErr
 	}
 
 	if deviceOpened {
-		deviceAlreadyOpenErr := fmt.Errorf("The device %s is already in use - resizing failed", devicePath)
+		deviceAlreadyOpenErr := fmt.Errorf("the device %s is already in use", devicePath)
 		return false, deviceAlreadyOpenErr
 	}
 
@@ -80,11 +80,11 @@ func (resizefs *ResizeFs) Resize(devicePath string) (bool, error) {
 	case "xfs":
 		return resizefs.xfsResize(devicePath)
 	}
-	return false, fmt.Errorf("Resize of format %s is not supported for device %s", format, devicePath)
+	return false, fmt.Errorf("resize of format %s is not supported for device %s", format, devicePath)
 }
 
 func (resizefs *ResizeFs) fsckDevice(devicePath string) error {
-	glog.V(4).Infof("Checking for issues with fsck on disk: %s", devicePath)
+	glog.V(4).Infof("Checking for issues with fsck on device: %s", devicePath)
 	args := []string{"-a", devicePath}
 	out, err := resizefs.mounter.Exec.Run("fsck", args...)
 	if err != nil {
@@ -93,7 +93,7 @@ func (resizefs *ResizeFs) fsckDevice(devicePath string) error {
 		case err == utilexec.ErrExecutableNotFound:
 			glog.Warningf("'fsck' not found on system; continuing resizing without running 'fsck'.")
 		case isExitError && ee.ExitStatus() == fsckErrorsCorrected:
-			glog.Infof("Device %s has errors which were corrected by fsck.", devicePath)
+			glog.V(2).Infof("Device %s has errors which were corrected by fsck: %s", devicePath, string(out))
 		case isExitError && ee.ExitStatus() == fsckErrorsUncorrected:
 			return fmt.Errorf("'fsck' found errors on device %s but could not correct them: %s.", devicePath, string(out))
 		case isExitError && ee.ExitStatus() > fsckErrorsUncorrected:
@@ -106,11 +106,11 @@ func (resizefs *ResizeFs) fsckDevice(devicePath string) error {
 func (resizefs *ResizeFs) extResize(devicePath string) (bool, error) {
 	output, err := resizefs.mounter.Exec.Run("resize2fs", devicePath)
 	if err == nil {
-		glog.Infof("Disk %s resized successfully", devicePath)
+		glog.V(2).Infof("Device %s resized successfully", devicePath)
 		return true, nil
 	}
 
-	resizeError := fmt.Errorf("Resize of disk %s failed with %s error %v", devicePath, string(output), err)
+	resizeError := fmt.Errorf("resize of device %s failed: %v. resize2fs output: %s", devicePath, err, string(output))
 	return false, resizeError
 
 }
@@ -120,10 +120,10 @@ func (resizefs *ResizeFs) xfsResize(devicePath string) (bool, error) {
 	output, err := resizefs.mounter.Exec.Run("xfs_growfs", args...)
 
 	if err == nil {
-		glog.Infof("Disk %s resized successfully", devicePath)
+		glog.V(2).Infof("Device %s resized successfully", devicePath)
 		return true, nil
 	}
 
-	resizeError := fmt.Errorf("Resize of disk %s failed with %s error %v", devicePath, string(output), err)
+	resizeError := fmt.Errorf("resize of device %s failed: %v. xfs_growfs output: %s", devicePath, err, string(output))
 	return false, resizeError
 }
