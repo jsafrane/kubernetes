@@ -17,18 +17,15 @@ limitations under the License.
 package csi
 
 import (
-	"errors"
-	"fmt"
-	"path"
+	"os"
 
 	"github.com/golang/glog"
-	grpctx "golang.org/x/net/context"
 	api "k8s.io/api/core/v1"
-	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	kstrings "k8s.io/kubernetes/pkg/util/strings"
 	"k8s.io/kubernetes/pkg/volume"
+	"k8s.io/kubernetes/pkg/volume/util"
 )
 
 type csiMountMgr struct {
@@ -44,21 +41,27 @@ type csiMountMgr struct {
 	options    volume.VolumeOptions
 	volumeInfo map[string]string
 	volume.MetricsNil
+	volumeName string
 }
 
 // volume.Volume methods
 var _ volume.Volume = &csiMountMgr{}
 
 func (c *csiMountMgr) GetPath() string {
-	return getTargetPath(c.podUID, c.driverName, c.volumeID, c.plugin.host)
+	ret := c.plugin.host.GetPodVolumeDir(c.podUID, kstrings.EscapeQualifiedNameForDisk(csiPluginName), c.volumeName)
+	return ret
 }
 
-func getTargetPath(uid types.UID, driverName string, volID string, host volume.VolumeHost) string {
+/*
+func getTargetPath(uid types.UID, volName string) string {
 	// driverName validated at Mounter creation
 	// sanitize (replace / with ~) in volumeID before it's appended to path:w
 	driverPath := fmt.Sprintf("%s/%s", driverName, kstrings.EscapeQualifiedNameForDisk(volID))
-	return host.GetPodVolumeDir(uid, kstrings.EscapeQualifiedNameForDisk(csiPluginName), driverPath)
+	ret := host.GetPodVolumeDir(uid, kstrings.EscapeQualifiedNameForDisk(csiPluginName), driverPath)
+	glog.Infof("JSAF: getTargetPath: uid %s, driver %s, volid %s, host %s, ret %s", uid, driverName, volID, host, ret)
+	return ret
 }
+*/
 
 // volume.Mounter methods
 var _ volume.Mounter = &csiMountMgr{}
@@ -74,65 +77,72 @@ func (c *csiMountMgr) SetUp(fsGroup *int64) error {
 }
 
 func (c *csiMountMgr) SetUpAt(dir string, fsGroup *int64) error {
-	glog.V(4).Infof(log("Mounter.SetUpAt(%s)", dir))
+	glog.V(4).Infof(log("JSAF Mounter.SetUpAt(%s)", dir))
 
 	csiSource, err := getCSISourceFromSpec(c.spec)
 	if err != nil {
-		glog.Error(log("mounter.SetupAt failed to get CSI persistent source: %v", err))
+		glog.Error(log("attacher.MountDevice failed to get CSI persistent source: %v", err))
 		return err
 	}
 
-	ctx, cancel := grpctx.WithTimeout(grpctx.Background(), csiTimeout)
-	defer cancel()
+	mounter := c.plugin.host.GetMounter(csiPluginName)
+	notMnt, err := mounter.IsLikelyNotMountPoint(dir)
+	glog.V(4).Infof("CSI set up: Dir (%s) name (%q) Mounted (%t) Error (%v), ReadOnly (%t)", dir, c.spec.Name(), !notMnt, err, c.readOnly)
+	if err != nil && !os.IsNotExist(err) {
+		glog.Errorf("cannot validate mount point: %s %v", dir, err)
+		return err
+	}
+	if !notMnt {
+		return nil
+	}
 
-	csi := c.csiClient
-	nodeName := string(c.plugin.host.GetNodeName())
-	attachID := getAttachmentName(csiSource.VolumeHandle, csiSource.Driver, nodeName)
-
-	// ensure version is supported
-	if err := csi.AssertSupportedVersion(ctx, csiVersion); err != nil {
-		glog.Errorf(log("failed to assert version: %v", err))
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		glog.Errorf("mkdir failed on disk %s (%v)", dir, err)
 		return err
 	}
 
-	// search for attachment by VolumeAttachment.Spec.Source.PersistentVolumeName
-	if c.volumeInfo == nil {
+	// Perform a bind mount to the full path to allow duplicate mounts of the same PD.
+	options := []string{"bind"}
+	if c.readOnly {
+		options = append(options, "ro")
+	}
 
-		attachment, err := c.k8s.StorageV1alpha1().VolumeAttachments().Get(attachID, meta.GetOptions{})
-		if err != nil {
-			glog.Error(log("mounter.SetupAt failed while getting volume attachment [id=%v]: %v", attachID, err))
+	globalPath := getGlobalDeviceMountPath(c.plugin.host, csiSource)
+	glog.V(4).Infof("attempting to mount %s", dir)
+
+	err = mounter.Mount(globalPath, dir, "", options)
+	if err != nil {
+		notMnt, mntErr := mounter.IsLikelyNotMountPoint(dir)
+		if mntErr != nil {
+			glog.Errorf("IsLikelyNotMountPoint check failed: %v", mntErr)
 			return err
 		}
-
-		if attachment == nil {
-			glog.Error(log("unable to find VolumeAttachment [id=%s]", attachID))
-			return errors.New("no existing VolumeAttachment found")
+		if !notMnt {
+			if mntErr = mounter.Unmount(dir); mntErr != nil {
+				glog.Errorf("Failed to unmount: %v", mntErr)
+				return err
+			}
+			notMnt, mntErr := mounter.IsLikelyNotMountPoint(dir)
+			if mntErr != nil {
+				glog.Errorf("IsLikelyNotMountPoint check failed: %v", mntErr)
+				return err
+			}
+			if !notMnt {
+				// This is very odd, we don't expect it.  We'll try again next sync loop.
+				glog.Errorf("%s is still mounted, despite call to unmount().  Will try again next sync loop.", dir)
+				return err
+			}
 		}
-		c.volumeInfo = attachment.Status.AttachmentMetadata
-	}
-
-	//TODO (vladimirvivien) implement better AccessModes mapping between k8s and CSI
-	accessMode := api.ReadWriteOnce
-	if c.spec.PersistentVolume.Spec.AccessModes != nil {
-		accessMode = c.spec.PersistentVolume.Spec.AccessModes[0]
-	}
-
-	err = csi.NodePublishVolume(
-		ctx,
-		c.volumeID,
-		c.readOnly,
-		dir,
-		accessMode,
-		c.volumeInfo,
-		"ext4", //TODO needs to be sourced from PV or somewhere else
-	)
-
-	if err != nil {
-		glog.Errorf(log("Mounter.SetupAt failed: %v", err))
+		os.Remove(dir)
+		glog.Errorf("Mount of disk %s failed: %v", dir, err)
 		return err
 	}
-	glog.V(4).Infof(log("successfully mounted %s", dir))
 
+	if !c.readOnly {
+		volume.SetVolumeOwnership(c, fsGroup)
+	}
+
+	glog.V(4).Infof("Successfully mounted %s", dir)
 	return nil
 }
 
@@ -150,40 +160,9 @@ var _ volume.Unmounter = &csiMountMgr{}
 func (c *csiMountMgr) TearDown() error {
 	return c.TearDownAt(c.GetPath())
 }
+
 func (c *csiMountMgr) TearDownAt(dir string) error {
-	glog.V(4).Infof(log("Unmounter.TearDown(%s)", dir))
-
-	// extract driverName and volID from path
-	base, volID := path.Split(dir)
-	volID = kstrings.UnescapeQualifiedNameForDisk(volID)
-	driverName := path.Base(base)
-
-	if c.csiClient == nil {
-		addr := fmt.Sprintf(csiAddrTemplate, driverName)
-		client := newCsiDriverClient("unix", addr)
-		glog.V(4).Infof(log("unmounter csiClient setup [volume=%v,driver=%v]", volID, driverName))
-		c.csiClient = client
-	}
-
-	ctx, cancel := grpctx.WithTimeout(grpctx.Background(), csiTimeout)
-	defer cancel()
-
-	csi := c.csiClient
-
-	// TODO make all assertion calls private within the client itself
-	if err := csi.AssertSupportedVersion(ctx, csiVersion); err != nil {
-		glog.Errorf(log("failed to assert version: %v", err))
-		return err
-	}
-
-	err := csi.NodeUnpublishVolume(ctx, volID, dir)
-
-	if err != nil {
-		glog.Errorf(log("Mounter.Setup failed: %v", err))
-		return err
-	}
-
-	glog.V(4).Infof(log("successfully unmounted %s", dir))
-
-	return nil
+	glog.V(4).Infof(log("JSAF Unmounter.TearDown(%s)", dir))
+	mounter := c.plugin.host.GetMounter(csiPluginName)
+	return util.UnmountMountPoint(dir, mounter, true /* check for bind mounts */)
 }

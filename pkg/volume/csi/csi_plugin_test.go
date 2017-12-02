@@ -27,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	fakeclient "k8s.io/client-go/kubernetes/fake"
 	utiltesting "k8s.io/client-go/util/testing"
-	kstrings "k8s.io/kubernetes/pkg/util/strings"
 	"k8s.io/kubernetes/pkg/volume"
 	volumetest "k8s.io/kubernetes/pkg/volume/testing"
 )
@@ -134,6 +133,7 @@ func TestPluginCanSupport(t *testing.T) {
 	}
 }
 
+/*
 func TestPluginConstructVolumeSpec(t *testing.T) {
 	plug, tmpDir := newTestPlugin(t)
 	defer os.RemoveAll(tmpDir)
@@ -172,7 +172,7 @@ func TestPluginConstructVolumeSpec(t *testing.T) {
 		}
 	}
 }
-
+*/
 func TestPluginNewMounter(t *testing.T) {
 	plug, tmpDir := newTestPlugin(t)
 	defer os.RemoveAll(tmpDir)

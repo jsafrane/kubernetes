@@ -20,17 +20,22 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"os"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/golang/glog"
 
+	grpctx "golang.org/x/net/context"
 	"k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1alpha1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/kubernetes/pkg/util/mount"
+	kstrings "k8s.io/kubernetes/pkg/util/strings"
 	"k8s.io/kubernetes/pkg/volume"
 )
 
@@ -38,6 +43,7 @@ type csiAttacher struct {
 	plugin        *csiPlugin
 	k8s           kubernetes.Interface
 	waitSleepTime time.Duration
+	csiClient     csiClient
 }
 
 // volume.Attacher methods
@@ -65,7 +71,7 @@ func (c *csiAttacher) Attach(spec *volume.Spec, nodeName types.NodeName) (string
 		},
 		Spec: storage.VolumeAttachmentSpec{
 			NodeName: node,
-			Attacher: csiPluginName,
+			Attacher: csiSource.Driver,
 			Source: storage.VolumeAttachmentSource{
 				PersistentVolumeName: &pvName,
 			},
@@ -185,13 +191,87 @@ func (c *csiAttacher) VolumesAreAttached(specs []*volume.Spec, nodeName types.No
 	return attached, nil
 }
 
+func getGlobalDeviceMountPath(host volume.VolumeHost, source *v1.CSIPersistentVolumeSource) string {
+	driverPath := fmt.Sprintf("%s/%s", source.Driver, kstrings.EscapeQualifiedNameForDisk(source.VolumeHandle))
+	return path.Join(host.GetPluginDir(csiPluginName), mount.MountsInGlobalPDPath, driverPath)
+}
+
 func (c *csiAttacher) GetDeviceMountPath(spec *volume.Spec) (string, error) {
-	glog.V(4).Info(log("attacher.GetDeviceMountPath is not implemented"))
-	return "", nil
+	// sanitize (replace / with ~) in volumeID before it's appended to path:w
+	csiSource, err := getCSISourceFromSpec(spec)
+	if err != nil {
+		glog.Error(log("attacher.MountDevice failed to get CSI persistent source: %v", err))
+		return "", err
+	}
+	ret := getGlobalDeviceMountPath(c.plugin.host, csiSource)
+	glog.Infof("JSAF: GetDeviceMountPath: %s", ret)
+	return ret, nil
 }
 
 func (c *csiAttacher) MountDevice(spec *volume.Spec, devicePath string, deviceMountPath string) error {
-	glog.V(4).Info(log("attacher.MountDevice is not implemented"))
+	glog.V(4).Infof(log("JSAF Mounter.MountDevice(%s)", deviceMountPath))
+
+	if err := os.MkdirAll(deviceMountPath, 0750); err != nil {
+		return err
+	}
+
+	csiSource, err := getCSISourceFromSpec(spec)
+	if err != nil {
+		glog.Error(log("attacher.MountDevice failed to get CSI persistent source: %v", err))
+		return err
+	}
+
+	addr := fmt.Sprintf(csiAddrTemplate, csiSource.Driver)
+	client := newCsiDriverClient("unix", addr)
+
+	ctx, cancel := grpctx.WithTimeout(grpctx.Background(), csiTimeout)
+	defer cancel()
+
+	nodeName := string(c.plugin.host.GetNodeName())
+	attachID := getAttachmentName(csiSource.VolumeHandle, csiSource.Driver, nodeName)
+
+	// ensure version is supported
+	if err := client.AssertSupportedVersion(ctx, csiVersion); err != nil {
+		glog.Errorf(log("failed to assert version: %v", err))
+		return err
+	}
+
+	// search for attachment by VolumeAttachment.Spec.Source.PersistentVolumeName
+
+	attachment, err := c.k8s.StorageV1alpha1().VolumeAttachments().Get(attachID, meta.GetOptions{})
+	if err != nil {
+		glog.Error(log("mounter.MountDevice failed while getting volume attachment [id=%v]: %v", attachID, err))
+		return err
+	}
+
+	if attachment == nil {
+		glog.Error(log("unable to find VolumeAttachment [id=%s]", attachID))
+		return errors.New("no existing VolumeAttachment found")
+	}
+	volumeInfo := attachment.Status.AttachmentMetadata
+
+	//TODO (vladimirvivien) implement better AccessModes mapping between k8s and CSI
+	accessMode := v1.ReadWriteOnce
+	if spec.PersistentVolume.Spec.AccessModes != nil {
+		accessMode = spec.PersistentVolume.Spec.AccessModes[0]
+	}
+
+	err = client.NodePublishVolume(
+		ctx,
+		csiSource.VolumeHandle,
+		csiSource.ReadOnly,
+		deviceMountPath,
+		accessMode,
+		volumeInfo,
+		"ext4", //TODO needs to be sourced from PV or somewhere else
+	)
+
+	if err != nil {
+		glog.Errorf(log("Mounter.MountDevice failed: %v", err))
+		return err
+	}
+	glog.V(4).Infof(log("successfully mounted %s", deviceMountPath))
+
 	return nil
 }
 
@@ -261,8 +341,42 @@ func (c *csiAttacher) waitForVolumeDetachment(volumeHandle, attachID string) err
 }
 
 func (c *csiAttacher) UnmountDevice(deviceMountPath string) error {
-	glog.V(4).Info(log("detacher.UnmountDevice is not implemented"))
-	return nil
+	glog.V(4).Infof(log("JSAF attacher.UnmountDevice(%s)", deviceMountPath))
+
+	// extract driverName and volID from path
+	base, volID := path.Split(deviceMountPath)
+	volID = kstrings.UnescapeQualifiedNameForDisk(volID)
+	driverName := path.Base(base)
+
+	glog.Infof("JSAF: UnmountDevice dir: %s, volID: %s, driverName: %s", deviceMountPath, volID, driverName)
+	if c.csiClient == nil {
+		addr := fmt.Sprintf(csiAddrTemplate, driverName)
+		client := newCsiDriverClient("unix", addr)
+		glog.V(4).Infof(log("unmounter csiClient setup [volume=%v,driver=%v]", volID, driverName))
+		c.csiClient = client
+	}
+
+	ctx, cancel := grpctx.WithTimeout(grpctx.Background(), csiTimeout)
+	defer cancel()
+
+	csi := c.csiClient
+
+	// TODO make all assertion calls private within the client itself
+	if err := csi.AssertSupportedVersion(ctx, csiVersion); err != nil {
+		glog.Errorf(log("failed to assert version: %v", err))
+		return err
+	}
+
+	err := csi.NodeUnpublishVolume(ctx, volID, deviceMountPath)
+
+	if err != nil {
+		glog.Errorf(log("Mounter.Setup failed: %v", err))
+		return err
+	}
+
+	glog.V(4).Infof(log("successfully unmounted %s", deviceMountPath))
+
+	return os.Remove(deviceMountPath)
 }
 
 // getAttachmentName returns csi-<sha252(volName,csiDriverName,NodeName>

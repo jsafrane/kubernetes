@@ -143,6 +143,7 @@ func (p *csiPlugin) NewMounter(
 		driverName: pvSource.Driver,
 		volumeID:   pvSource.VolumeHandle,
 		csiClient:  client,
+		volumeName: spec.Name(),
 	}
 	return mounter, nil
 }
@@ -150,8 +151,9 @@ func (p *csiPlugin) NewMounter(
 func (p *csiPlugin) NewUnmounter(specName string, podUID types.UID) (volume.Unmounter, error) {
 	glog.V(4).Infof(log("setting up unmounter for [name=%v, podUID=%v]", specName, podUID))
 	unmounter := &csiMountMgr{
-		plugin: p,
-		podUID: podUID,
+		plugin:     p,
+		podUID:     podUID,
+		volumeName: specName,
 	}
 	return unmounter, nil
 }
