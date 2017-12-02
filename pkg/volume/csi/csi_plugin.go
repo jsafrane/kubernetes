@@ -34,14 +34,15 @@ import (
 )
 
 const (
-	csiName       = "csi"
-	csiPluginName = "kubernetes.io/csi"
+	csiName         = "csi"
+	csiPluginName   = "kubernetes.io/csi"
+	csiNodeLabelKey = "csi.volume.kubernetes.io/nodeid"
 
 	// TODO (vladimirvivien) implement a more dynamic way to discover
 	// the unix domain socket path for each installed csi driver.
 	// TODO (vladimirvivien) would be nice to name socket with a .sock extension
 	// for consistency.
-	csiAddrTemplate = "/var/lib/kubelet/plugins/%v"
+	csiAddrTemplate = "/var/lib/kubelet/plugins/%v/csi.sock"
 	csiTimeout      = 15 * time.Second
 	volNameSep      = "^"
 )
