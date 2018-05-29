@@ -67,7 +67,7 @@ const (
 	TiB int64 = 1024 * GiB
 
 	// Waiting period for volume server (Ceph, ...) to initialize itself.
-	VolumeServerPodStartupSleep = 20 * time.Second
+	VolumeServerPodStartupTimeout = 5 * time.Minute
 
 	// Waiting period for pod to be cleaned up and unmount its volumes so we
 	// don't tear down containers with NFS/Ceph/Gluster server too early.
@@ -100,6 +100,8 @@ type VolumeTestConfig struct {
 	ServerVolumes map[string]string
 	// Use HostNetwork for the server
 	ServerHostNetwork bool
+	// Message to wait for before starting clients
+	ServerReadyMessage string
 	// Wait for the pod to terminate successfully
 	// False indicates that the pod is long running
 	WaitForCompletion bool
@@ -122,11 +124,12 @@ type VolumeTest struct {
 // NFS-specific wrapper for CreateStorageServer.
 func NewNFSServer(cs clientset.Interface, namespace string, args []string) (config VolumeTestConfig, pod *v1.Pod, ip string) {
 	config = VolumeTestConfig{
-		Namespace:     namespace,
-		Prefix:        "nfs",
-		ServerImage:   imageutils.GetE2EImage(imageutils.VolumeNFSServer),
-		ServerPorts:   []int{2049},
-		ServerVolumes: map[string]string{"": "/exports"},
+		Namespace:          namespace,
+		Prefix:             "nfs",
+		ServerImage:        imageutils.GetE2EImage(imageutils.VolumeNFSServer),
+		ServerPorts:        []int{2049},
+		ServerVolumes:      map[string]string{"": "/exports"},
+		ServerReadyMessage: "NFS started",
 	}
 	if len(args) > 0 {
 		config.ServerArgs = args
@@ -195,7 +198,8 @@ func NewISCSIServer(cs clientset.Interface, namespace string) (config VolumeTest
 			// iSCSI source "block devices" must be available on the host
 			"/srv/iscsi": "/srv/iscsi",
 		},
-		ServerHostNetwork: true,
+		ServerHostNetwork:  true,
+		ServerReadyMessage: "iscsi target started",
 	}
 	pod, ip = CreateStorageServer(cs, config)
 	return config, pod, ip, iqn
@@ -208,21 +212,14 @@ func NewRBDServer(cs clientset.Interface, namespace string) (config VolumeTestCo
 	pool := namespace
 	image := namespace
 	config = VolumeTestConfig{
-		Namespace:   namespace,
-		Prefix:      "rbd",
-		ServerImage: imageutils.GetE2EImage(imageutils.VolumeRBDServer),
-		ServerPorts: []int{6789},
-		ServerArgs:  []string{pool, image},
+		Namespace:          namespace,
+		Prefix:             "rbd",
+		ServerImage:        imageutils.GetE2EImage(imageutils.VolumeRBDServer),
+		ServerPorts:        []int{6789},
+		ServerArgs:         []string{pool, image},
+		ServerReadyMessage: "Ceph is ready",
 	}
 	pod, ip = CreateStorageServer(cs, config)
-
-	// Ceph server container needs some time to start. Tests continue working if
-	// this sleep is removed, however kubelet logs (and kubectl describe
-	// <client pod>) would be cluttered with error messages about non-existing
-	// image.
-	Logf("sleeping a bit to give ceph server time to initialize")
-	time.Sleep(VolumeServerPodStartupSleep)
-
 	// create secrets for the server
 	secret = &v1.Secret{
 		TypeMeta: metav1.TypeMeta{
@@ -368,6 +365,10 @@ func StartVolumeServer(client clientset.Interface, config VolumeTestConfig) *v1.
 			pod, err = podClient.Get(serverPodName, metav1.GetOptions{})
 			ExpectNoError(err, "Cannot locate the server pod %q: %v", serverPodName, err)
 		}
+	}
+	if config.ServerReadyMessage != "" {
+		_, err := LookForStringInLog(pod.Namespace, pod.Name, serverPodName, config.ServerReadyMessage, VolumeServerPodStartupTimeout)
+		ExpectNoError(err, "Failed to find %q in pod logs: %s", config.ServerReadyMessage, err)
 	}
 	return pod
 }
