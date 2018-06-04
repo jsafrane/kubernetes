@@ -44,6 +44,7 @@ import (
 	"strconv"
 	"time"
 
+	apps "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -71,6 +72,8 @@ const (
 	// Waiting period for pod to be cleaned up and unmount its volumes so we
 	// don't tear down containers with NFS/Ceph/Gluster server too early.
 	PodCleanupTimeout = 20 * time.Second
+
+	storageUtilitiesDaemonSetName = "storage-utils"
 )
 
 // Configuration of one tests. The test consist of:
@@ -539,4 +542,174 @@ func CreateGCEVolume() (*v1.PersistentVolumeSource, string) {
 			ReadOnly: false,
 		},
 	}, diskName
+}
+
+// DeployStorageUtilities runs a DaemonSet in kube-system namespace that runs a
+// pod on every node with mount utilities (mount.nfs, mount.glusterfs, /bin/rbd,
+// iscsiadm, ...)
+//
+// Using MountContainers alpha feature this pod registers to kubelet running on
+// each node so kubelet runs the mount utilities in the container and not on the
+// host. The host can be any minimal distribution without any storage utilities,
+// however, it must have all necessary kernel modules for NFS, Ceph RBD, fuse
+// and iSCSI.
+func DeployStorageUtilities(c clientset.Interface) error {
+	privileged := true
+	bidirectional := v1.MountPropagationBidirectional
+
+	ds := &apps.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: storageUtilitiesDaemonSetName,
+		},
+		Spec: apps.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"storage-utils": ""},
+			},
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"storage-utils": ""},
+				},
+				Spec: v1.PodSpec{
+					HostNetwork: true,
+					Containers: []v1.Container{
+						{
+							Name:  "mounter",
+							Image: "jsafrane/mounter-daemonset:latest",
+							SecurityContext: &v1.SecurityContext{
+								Privileged: &privileged,
+							},
+							VolumeMounts: []v1.VolumeMount{
+								{
+									// The containers will mount stuff to
+									// /var/lib/kubelet and need the host to see
+									// the mounts
+									Name:             "kubelet",
+									MountPath:        "/var/lib/kubelet",
+									MountPropagation: &bidirectional,
+								},
+								{
+									// iSCSI and RBD needs /sys from the host
+									Name:      "sys",
+									MountPath: "/sys",
+								},
+								{
+									// iSCSI and RBD needs /dev from the host
+									Name:      "dev",
+									MountPath: "/dev",
+								},
+								{
+									// iSCSI needs /etc/iscsi/initiatorname.iscsi
+									Name:      "iscsi",
+									MountPath: "/etc/iscsi",
+								},
+								{
+									Name:      "iscsilock",
+									MountPath: "/run/lock/iscsi",
+								},
+								{
+									// Ceph RBD needs working modprobe
+									Name:      "modules",
+									MountPath: "/lib/modules",
+								},
+							},
+							Env: []v1.EnvVar{
+								{
+									Name: "MOUNT_POD_NAME",
+									ValueFrom: &v1.EnvVarSource{
+										FieldRef: &v1.ObjectFieldSelector{
+											FieldPath: "metadata.name",
+										},
+									},
+								},
+								{
+									Name: "MOUNT_POD_NAMESPACE",
+									ValueFrom: &v1.EnvVarSource{
+										FieldRef: &v1.ObjectFieldSelector{
+											FieldPath: "metadata.namespace",
+										},
+									},
+								},
+								{
+									Name: "MOUNT_POD_UID",
+									ValueFrom: &v1.EnvVarSource{
+										FieldRef: &v1.ObjectFieldSelector{
+											FieldPath: "metadata.uid",
+										},
+									},
+								},
+								{
+									Name:  "MOUNT_CONTAINER_NAME",
+									Value: "mounter",
+								},
+							},
+						},
+					},
+					Volumes: []v1.Volume{
+						{
+							Name: "kubelet",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: "/var/lib/kubelet",
+								},
+							},
+						},
+						{
+							Name: "sys",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: "/sys",
+								},
+							},
+						},
+						{
+							Name: "dev",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: "/dev",
+								},
+							},
+						},
+						{
+							Name: "iscsi",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: "/etc/iscsi",
+								},
+							},
+						},
+						{
+							Name: "iscsilock",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: "/run/lock/iscsi",
+								},
+							},
+						},
+						{
+							Name: "modules",
+							VolumeSource: v1.VolumeSource{
+								HostPath: &v1.HostPathVolumeSource{
+									Path: "/lib/modules",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	ds, err := c.Apps().DaemonSets(metav1.NamespaceSystem).Create(ds)
+	if err != nil {
+		if apierrs.IsAlreadyExists(err) {
+			Logf("Reusing already existing DaemonSet kube-system/storage-utils")
+		} else {
+			return err
+		}
+	}
+	return nil
+}
+
+func DeleteStorageUtilities(c clientset.Interface) error {
+	return c.Apps().DaemonSets(metav1.NamespaceSystem).Delete(storageUtilitiesDaemonSetName, nil)
 }

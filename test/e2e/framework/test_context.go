@@ -121,6 +121,10 @@ type TestContextType struct {
 	// Indicates what path the kubernetes-anywhere is installed on
 	KubernetesAnywherePath string
 
+	// Start DaemonSet with storage utilities such as /bin/rbd, /sbin/mount.nfs
+	// or /sbin/iscsiadm that are necessary for various storage tests.
+	DeployStorageUtilities bool
+
 	// Viper-only parameters.  These will in time replace all flags.
 
 	// Example: Create a file 'e2e.json' with the following:
@@ -274,6 +278,7 @@ func RegisterClusterFlags() {
 	flag.StringVar(&TestContext.IngressUpgradeImage, "ingress-upgrade-image", "", "Image to upgrade to if doing an upgrade test for ingress.")
 	flag.StringVar(&TestContext.GCEUpgradeScript, "gce-upgrade-script", "", "Script to use to upgrade a GCE cluster.")
 	flag.BoolVar(&TestContext.CleanStart, "clean-start", false, "If true, purge all namespaces except default and system before running tests. This serves to Cleanup test namespaces from failed/interrupted e2e runs in a long-lived cluster.")
+	flag.BoolVar(&TestContext.DeployStorageUtilities, "deploy-storage-utilities", false, "If true, deploy a DaemonSet with storage utilities on all nodes before running tests.")
 }
 
 // Register flags specific to the node e2e test suite.
