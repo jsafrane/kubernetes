@@ -1,0 +1,21 @@
+#!/bin/sh
+
+base=/var/lib/kubelet/plugin-containers
+
+mkdir -p -m 700 $base
+
+# Create json files with volume plugin registrations.
+for plugin in $*; do
+    tempname="$base/.tmp.$plugin.json"
+    regname="$base/$plugin.json"
+    /bin/cat >$tempname <<EOF
+    {
+        "podNamespace": "$MOUNT_POD_NAMESPACE",
+        "podName": "$MOUNT_POD_NAME",
+        "podUID": "$MOUNT_POD_UID",
+        "containerName": "$MOUNT_CONTAINER_NAME"
+    }
+EOF
+    # create $regname atomically using /bin/mv
+    /bin/mv -f $tempname $regname
+done

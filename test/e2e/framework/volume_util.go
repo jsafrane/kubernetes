@@ -574,7 +574,7 @@ func DeployStorageUtilities(c clientset.Interface) error {
 					Containers: []v1.Container{
 						{
 							Name:  "mounter",
-							Image: "jsafrane/mounter-daemonset:latest",
+							Image: imageutils.GetE2EImage(imageutils.VolumeClients),
 							SecurityContext: &v1.SecurityContext{
 								Privileged: &privileged,
 							},
