@@ -27,6 +27,7 @@ auth client required = none
 [mon.a]
 host = cephbox
 mon addr = $1
+mon allow pool delete = true
 
 [osd]
 osd journal size = 128

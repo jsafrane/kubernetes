@@ -75,6 +75,7 @@ var initVolSources = []volumeTypeDef{
 	{"nfsPVC", "", initNFSPVC},
 	{"gluster", "", initGluster},
 	{"iSCSI", "[Feature:Volumes]", initISCSI},
+	{"CephRBD", "[Feature:Volumes]", initCephRBD},
 }
 
 var _ = utils.SIGDescribe("Subpath", func() {
@@ -1050,6 +1051,64 @@ func (s *iscsiSource) getReadOnlyVolumeSpec() *v1.VolumeSource {
 }
 
 func (s *iscsiSource) cleanupVolume(f *framework.Framework) {
+	if s.serverPod != nil {
+		framework.DeletePodWithWait(f, f.ClientSet, s.serverPod)
+	}
+}
+
+type cephRBDSource struct {
+	serverPod         *v1.Pod
+	secret            *v1.Secret
+	rbdPool, rbdImage string
+	serverIP          string
+}
+
+func initCephRBD() volSource {
+	return &cephRBDSource{}
+}
+
+func (s *cephRBDSource) createVolume(f *framework.Framework) volInfo {
+	framework.Logf("Creating Ceph RBD server")
+	_, s.serverPod, s.secret, s.rbdPool, s.rbdImage, s.serverIP = framework.NewRBDServer(f.ClientSet, f.Namespace.Name)
+
+	return volInfo{
+		source: &v1.VolumeSource{
+			RBD: &v1.RBDVolumeSource{
+				CephMonitors: []string{s.serverIP},
+				RBDPool:      s.rbdPool,
+				RBDImage:     s.rbdImage,
+				RadosUser:    "admin",
+				SecretRef: &v1.LocalObjectReference{
+					Name: s.secret.Name,
+				},
+				FSType: "ext2",
+			},
+		},
+	}
+}
+
+func (s *cephRBDSource) getReadOnlyVolumeSpec() *v1.VolumeSource {
+	return &v1.VolumeSource{
+		RBD: &v1.RBDVolumeSource{
+			CephMonitors: []string{s.serverIP},
+			RBDPool:      s.rbdPool,
+			RBDImage:     s.rbdImage,
+			RadosUser:    "admin",
+			SecretRef: &v1.LocalObjectReference{
+				Name: s.secret.Name,
+			},
+			FSType:   "ext2",
+			ReadOnly: true,
+		},
+	}
+}
+
+func (s *cephRBDSource) cleanupVolume(f *framework.Framework) {
+	if s.serverPod != nil {
+		err := f.ClientSet.CoreV1().Secrets(f.Namespace.Name).Delete(s.secret.Name, nil)
+		Expect(err).NotTo(HaveOccurred(), "Secrets delete failed")
+
+	}
 	if s.serverPod != nil {
 		framework.DeletePodWithWait(f, f.ClientSet, s.serverPod)
 	}

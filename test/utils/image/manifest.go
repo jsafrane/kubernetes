@@ -97,7 +97,7 @@ var (
 	VolumeNFSServer     = ImageConfig{e2eRegistry, "volume-nfs", "0.8", false}
 	VolumeISCSIServer   = ImageConfig{e2eRegistry, "volume-iscsi", "0.3", false}
 	VolumeGlusterServer = ImageConfig{e2eRegistry, "volume-gluster", "0.5", false}
-	VolumeRBDServer     = ImageConfig{e2eRegistry, "volume-rbd", "0.2", false}
+	VolumeRBDServer     = ImageConfig{e2eRegistry, "volume-rbd", "0.3", false}
 )
 
 func GetE2EImage(image ImageConfig) string {

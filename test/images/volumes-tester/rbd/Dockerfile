@@ -14,11 +14,12 @@
 
 # CEPH all in one
 # Based on image by Ricardo Rocha, ricardo@catalyst.net.nz
+# https://github.com/rochaporto/docker-ceph/tree/master/cephbox
 
 FROM fedora:26
 
 # Base Packages
-RUN yum install -y wget strace psmisc procps-ng ceph ceph-fuse && yum clean all
+RUN yum install -y wget strace psmisc procps-ng ceph ceph-fuse hostname && yum clean all
 
 # Get ports exposed
 EXPOSE 6789
@@ -32,3 +33,5 @@ ADD ./keyring /var/lib/ceph/mon/keyring
 ADD ./block.tar.gz /
 
 CMD /bootstrap.sh
+
+ENTRYPOINT ["/bootstrap.sh"]

@@ -202,15 +202,17 @@ func NewISCSIServer(cs clientset.Interface, namespace string) (config VolumeTest
 }
 
 // CephRBD-specific wrapper for CreateStorageServer.
-func NewRBDServer(cs clientset.Interface, namespace string) (config VolumeTestConfig, pod *v1.Pod, secret *v1.Secret, ip string) {
+func NewRBDServer(cs clientset.Interface, namespace string) (config VolumeTestConfig, pod *v1.Pod, secret *v1.Secret, rbdPool, rbdImage, ip string) {
+	// Each RBD server must provide a different pool and image name so multiple
+	// tests don't conflict on the same name. Namespace is unique enough.
+	pool := namespace
+	image := namespace
 	config = VolumeTestConfig{
 		Namespace:   namespace,
 		Prefix:      "rbd",
 		ServerImage: imageutils.GetE2EImage(imageutils.VolumeRBDServer),
 		ServerPorts: []int{6789},
-		ServerVolumes: map[string]string{
-			"/lib/modules": "/lib/modules",
-		},
+		ServerArgs:  []string{pool, image},
 	}
 	pod, ip = CreateStorageServer(cs, config)
 
@@ -242,7 +244,7 @@ func NewRBDServer(cs clientset.Interface, namespace string) (config VolumeTestCo
 		Failf("Failed to create secrets for Ceph RBD: %v", err)
 	}
 
-	return config, pod, secret, ip
+	return config, pod, secret, pool, image, ip
 }
 
 // Wrapper for StartVolumeServer(). A storage server config is passed in, and a pod pointer
@@ -388,8 +390,8 @@ func VolumeTestCleanup(f *Framework, config VolumeTestConfig) {
 	}
 
 	if config.ServerImage != "" {
-		if err := f.WaitForPodTerminated(config.Prefix+"-client", ""); !apierrs.IsNotFound(err) {
-			ExpectNoError(err, "Failed to wait client pod terminated: %v", err)
+		if err := f.WaitForPodNotFound(config.Prefix+"-client", PodStartTimeout); !apierrs.IsNotFound(err) {
+			ExpectNoError(err, "Failed to wait for client pod deleted: %v", err)
 		}
 		// See issue #24100.
 		// Prevent umount errors by making sure making sure the client pod exits cleanly *before* the volume server pod exits.

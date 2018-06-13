@@ -390,12 +390,13 @@ var _ = utils.SIGDescribe("Volume plugin streaming [Slow]", func() {
 		testFile := "ceph-rbd_io_test"
 
 		BeforeEach(func() {
-			config, serverPod, secret, serverIP = framework.NewRBDServer(cs, ns)
+			var pool, image string
+			config, serverPod, secret, pool, image, serverIP = framework.NewRBDServer(cs, ns)
 			volSource = v1.VolumeSource{
 				RBD: &v1.RBDVolumeSource{
 					CephMonitors: []string{serverIP},
-					RBDPool:      "rbd",
-					RBDImage:     "foo",
+					RBDPool:      pool,
+					RBDImage:     image,
 					RadosUser:    "admin",
 					SecretRef: &v1.LocalObjectReference{
 						Name: secret.Name,

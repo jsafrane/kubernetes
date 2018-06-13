@@ -199,7 +199,7 @@ var _ = utils.SIGDescribe("Volumes", func() {
 
 	Describe("Ceph RBD [Feature:Volumes]", func() {
 		It("should be mountable", func() {
-			config, _, secret, serverIP := framework.NewRBDServer(cs, namespace.Name)
+			config, _, secret, pool, image, serverIP := framework.NewRBDServer(cs, namespace.Name)
 			defer framework.VolumeTestCleanup(f, config)
 			defer cs.CoreV1().Secrets(config.Namespace).Delete(secret.Name, nil)
 
@@ -208,8 +208,8 @@ var _ = utils.SIGDescribe("Volumes", func() {
 					Volume: v1.VolumeSource{
 						RBD: &v1.RBDVolumeSource{
 							CephMonitors: []string{serverIP},
-							RBDPool:      "rbd",
-							RBDImage:     "foo",
+							RBDPool:      pool,
+							RBDImage:     image,
 							RadosUser:    "admin",
 							SecretRef: &v1.LocalObjectReference{
 								Name: secret.Name,
@@ -232,7 +232,7 @@ var _ = utils.SIGDescribe("Volumes", func() {
 	////////////////////////////////////////////////////////////////////////
 	Describe("CephFS [Feature:Volumes]", func() {
 		It("should be mountable", func() {
-			config, _, secret, serverIP := framework.NewRBDServer(cs, namespace.Name)
+			config, _, secret, _, _, serverIP := framework.NewRBDServer(cs, namespace.Name)
 			defer framework.VolumeTestCleanup(f, config)
 			defer cs.CoreV1().Secrets(config.Namespace).Delete(secret.Name, nil)
 
