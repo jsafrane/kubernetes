@@ -74,6 +74,9 @@ const (
 	PodCleanupTimeout = 20 * time.Second
 
 	storageUtilitiesDaemonSetName = "storage-utils"
+
+	// Template for iSCSI IQN.
+	iSCSIIQNTemplate = "iqn.2003-01.io.k8s:e2e.%s"
 )
 
 // Configuration of one tests. The test consist of:
@@ -95,6 +98,8 @@ type VolumeTestConfig struct {
 	// map <host (source) path> -> <container (dst.) path>
 	// if <host (source) path> is empty, mount a tmpfs emptydir
 	ServerVolumes map[string]string
+	// Use HostNetwork for the server
+	ServerHostNetwork bool
 	// Wait for the pod to terminate successfully
 	// False indicates that the pod is long running
 	WaitForCompletion bool
@@ -172,20 +177,28 @@ func NewGlusterfsServer(cs clientset.Interface, namespace string) (config Volume
 	return config, pod, ip
 }
 
-// iSCSI-specific wrapper for CreateStorageServer.
-func NewISCSIServer(cs clientset.Interface, namespace string) (config VolumeTestConfig, pod *v1.Pod, ip string) {
+// iSCSI-specific wrapper for CreateStorageServer. Note that there can be only
+// one SCSI server running on a node, [Serial] is highly advised.
+func NewISCSIServer(cs clientset.Interface, namespace string) (config VolumeTestConfig, pod *v1.Pod, ip, iqn string) {
+	// Generate cluster-wide unique IQN
+	iqn = fmt.Sprintf(iSCSIIQNTemplate, namespace)
 	config = VolumeTestConfig{
 		Namespace:   namespace,
 		Prefix:      "iscsi",
 		ServerImage: imageutils.GetE2EImage(imageutils.VolumeISCSIServer),
-		ServerPorts: []int{3260},
+		ServerArgs:  []string{iqn},
 		ServerVolumes: map[string]string{
 			// iSCSI container needs to insert modules from the host
 			"/lib/modules": "/lib/modules",
+			// iSCSI container needs to configure kernel
+			"/sys/kernel": "/sys/kernel",
+			// iSCSI source "block devices" must be available on the host
+			"/srv/iscsi": "/srv/iscsi",
 		},
+		ServerHostNetwork: true,
 	}
 	pod, ip = CreateStorageServer(cs, config)
-	return config, pod, ip
+	return config, pod, ip, iqn
 }
 
 // CephRBD-specific wrapper for CreateStorageServer.
@@ -308,6 +321,7 @@ func StartVolumeServer(client clientset.Interface, config VolumeTestConfig) *v1.
 		},
 
 		Spec: v1.PodSpec{
+			HostNetwork: config.ServerHostNetwork,
 			Containers: []v1.Container{
 				{
 					Name:  serverPodName,

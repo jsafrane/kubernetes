@@ -349,12 +349,13 @@ var _ = utils.SIGDescribe("Volume plugin streaming [Slow]", func() {
 		testFile := "iscsi_io_test"
 
 		BeforeEach(func() {
-			config, serverPod, serverIP = framework.NewISCSIServer(cs, ns)
+			var iqn string
+			config, serverPod, serverIP, iqn = framework.NewISCSIServer(cs, ns)
 			volSource = v1.VolumeSource{
 				ISCSI: &v1.ISCSIVolumeSource{
 					TargetPortal: serverIP + ":3260",
 					// from test/images/volumes-tester/iscsi/initiatorname.iscsi
-					IQN:      "iqn.2003-01.org.linux-iscsi.f21.x8664:sn.4b0aae584f7c",
+					IQN:      iqn,
 					Lun:      0,
 					FSType:   "ext2",
 					ReadOnly: false,

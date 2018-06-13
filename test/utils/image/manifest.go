@@ -95,7 +95,7 @@ var (
 	TestWebserver       = ImageConfig{e2eRegistry, "test-webserver", "1.0", true}
 	VolumeClients       = ImageConfig{e2eRegistry, "volume-clients", "0.1", false}
 	VolumeNFSServer     = ImageConfig{e2eRegistry, "volume-nfs", "0.8", false}
-	VolumeISCSIServer   = ImageConfig{e2eRegistry, "volume-iscsi", "0.2", false}
+	VolumeISCSIServer   = ImageConfig{e2eRegistry, "volume-iscsi", "0.3", false}
 	VolumeGlusterServer = ImageConfig{e2eRegistry, "volume-gluster", "0.5", false}
 	VolumeRBDServer     = ImageConfig{e2eRegistry, "volume-rbd", "0.2", false}
 )

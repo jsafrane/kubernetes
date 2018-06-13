@@ -59,15 +59,22 @@ type volSource interface {
 	getReadOnlyVolumeSpec() *v1.VolumeSource
 }
 
-var initVolSources = map[string]func() volSource{
-	"hostPath":         initHostpath,
-	"hostPathSymlink":  initHostpathSymlink,
-	"emptyDir":         initEmptydir,
-	"gcePDPVC":         initGCEPDPVC,
-	"gcePDPartitioned": initGCEPDPartition,
-	"nfs":              initNFS,
-	"nfsPVC":           initNFSPVC,
-	"gluster":          initGluster,
+type volumeTypeDef struct {
+	volumeType string
+	testTag    string
+	init       func() volSource
+}
+
+var initVolSources = []volumeTypeDef{
+	{"hostPath", "", initHostpath},
+	{"hostPathSymlink", "", initHostpathSymlink},
+	{"emptyDir", "", initEmptydir},
+	{"gcePDPVC", "", initGCEPDPVC},
+	{"gcePDPartitioned", "", initGCEPDPartition},
+	{"nfs", "", initNFS},
+	{"nfsPVC", "", initNFSPVC},
+	{"gluster", "", initGluster},
+	{"iSCSI", "[Feature:Volumes]", initISCSI},
 }
 
 var _ = utils.SIGDescribe("Subpath", func() {
@@ -134,11 +141,12 @@ var _ = utils.SIGDescribe("Subpath", func() {
 		})
 	})
 
-	for volType, volInit := range initVolSources {
-		curVolType := volType
-		curVolInit := volInit
+	for _, volDef := range initVolSources {
+		curVolType := volDef.volumeType
+		curVolInit := volDef.init
+		curVolTag := volDef.testTag
 
-		Context(fmt.Sprintf("[Volume type: %v]", curVolType), func() {
+		Context(fmt.Sprintf("[Volume type: %v] %s", curVolType, curVolTag), func() {
 			BeforeEach(func() {
 				By(fmt.Sprintf("Initializing %s volume", curVolType))
 				vol = curVolInit()
@@ -998,6 +1006,50 @@ func (s *nfsPVCSource) cleanupVolume(f *framework.Framework) {
 			framework.Failf("Failed to delete PVC or PV: %v", utilerrors.NewAggregate(errs))
 		}
 	}
+	if s.serverPod != nil {
+		framework.DeletePodWithWait(f, f.ClientSet, s.serverPod)
+	}
+}
+
+type iscsiSource struct {
+	serverPod *v1.Pod
+	serverIP  string
+	iqn       string
+}
+
+func initISCSI() volSource {
+	return &iscsiSource{}
+}
+
+func (s *iscsiSource) createVolume(f *framework.Framework) volInfo {
+	framework.Logf("Creating iSCSI server")
+	_, s.serverPod, s.serverIP, s.iqn = framework.NewISCSIServer(f.ClientSet, f.Namespace.Name)
+
+	return volInfo{
+		source: &v1.VolumeSource{
+			ISCSI: &v1.ISCSIVolumeSource{
+				TargetPortal: s.serverIP + ":3260",
+				IQN:          s.iqn,
+				Lun:          0,
+				FSType:       "ext2",
+			},
+		},
+	}
+}
+
+func (s *iscsiSource) getReadOnlyVolumeSpec() *v1.VolumeSource {
+	return &v1.VolumeSource{
+		ISCSI: &v1.ISCSIVolumeSource{
+			TargetPortal: s.serverIP + ":3260",
+			IQN:          s.iqn,
+			Lun:          0,
+			FSType:       "ext2",
+			ReadOnly:     true,
+		},
+	}
+}
+
+func (s *iscsiSource) cleanupVolume(f *framework.Framework) {
 	if s.serverPod != nil {
 		framework.DeletePodWithWait(f, f.ClientSet, s.serverPod)
 	}

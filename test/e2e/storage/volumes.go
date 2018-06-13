@@ -169,7 +169,7 @@ var _ = utils.SIGDescribe("Volumes", func() {
 
 	Describe("iSCSI [Feature:Volumes]", func() {
 		It("should be mountable", func() {
-			config, _, serverIP := framework.NewISCSIServer(cs, namespace.Name)
+			config, _, serverIP, iqn := framework.NewISCSIServer(cs, namespace.Name)
 			defer framework.VolumeTestCleanup(f, config)
 
 			tests := []framework.VolumeTest{
@@ -178,7 +178,7 @@ var _ = utils.SIGDescribe("Volumes", func() {
 						ISCSI: &v1.ISCSIVolumeSource{
 							TargetPortal: serverIP + ":3260",
 							// from test/images/volumes-tester/iscsi/initiatorname.iscsi
-							IQN:    "iqn.2003-01.org.linux-iscsi.f21.x8664:sn.4b0aae584f7c",
+							IQN:    iqn,
 							Lun:    0,
 							FSType: "ext2",
 						},
