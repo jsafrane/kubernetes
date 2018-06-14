@@ -76,6 +76,7 @@ var initVolSources = []volumeTypeDef{
 	{"gluster", "", initGluster},
 	{"iSCSI", "[Feature:Volumes]", initISCSI},
 	{"CephRBD", "[Feature:Volumes]", initCephRBD},
+	{"CephFS", "[Feature:Volumes]", initCephFS},
 }
 
 var _ = utils.SIGDescribe("Subpath", func() {
@@ -1108,6 +1109,54 @@ func (s *cephRBDSource) cleanupVolume(f *framework.Framework) {
 		err := f.ClientSet.CoreV1().Secrets(f.Namespace.Name).Delete(s.secret.Name, nil)
 		Expect(err).NotTo(HaveOccurred(), "Secrets delete failed")
 
+	}
+	if s.serverPod != nil {
+		framework.DeletePodWithWait(f, f.ClientSet, s.serverPod)
+	}
+}
+
+type cephFSSource struct {
+	serverPod *v1.Pod
+	secret    *v1.Secret
+	serverIP  string
+}
+
+func initCephFS() volSource {
+	return &cephFSSource{}
+}
+
+func (s *cephFSSource) createVolume(f *framework.Framework) volInfo {
+	framework.Logf("Creating Ceph RBD server")
+	_, s.serverPod, s.secret, _, _, s.serverIP = framework.NewRBDServer(f.ClientSet, f.Namespace.Name)
+
+	return volInfo{
+		source: &v1.VolumeSource{
+			CephFS: &v1.CephFSVolumeSource{
+				Monitors:  []string{s.serverIP + ":6789"},
+				User:      "kube",
+				SecretRef: &v1.LocalObjectReference{Name: s.secret.Name},
+			},
+		},
+	}
+}
+
+func (s *cephFSSource) getReadOnlyVolumeSpec() *v1.VolumeSource {
+	return &v1.VolumeSource{
+		CephFS: &v1.CephFSVolumeSource{
+			Monitors:  []string{s.serverIP + ":6789"},
+			User:      "kube",
+			SecretRef: &v1.LocalObjectReference{Name: s.secret.Name},
+			ReadOnly:  true,
+		},
+	}
+}
+
+func (s *cephFSSource) cleanupVolume(f *framework.Framework) {
+	framework.Logf("Sleeping a bit to let kubelet unmount the volume")
+	time.Sleep(framework.PodCleanupTimeout)
+	if s.serverPod != nil {
+		err := f.ClientSet.CoreV1().Secrets(f.Namespace.Name).Delete(s.secret.Name, nil)
+		Expect(err).NotTo(HaveOccurred(), "Secrets delete failed")
 	}
 	if s.serverPod != nil {
 		framework.DeletePodWithWait(f, f.ClientSet, s.serverPod)
