@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/kubernetes/pkg/apis/storage"
+	utilpointer "k8s.io/utils/pointer"
 )
 
 func getValidCSINode(name string) *storage.CSINode {
@@ -36,6 +37,7 @@ func getValidCSINode(name string) *storage.CSINode {
 					Name:         "valid-driver-name",
 					NodeID:       "valid-node",
 					TopologyKeys: []string{"company.com/zone1", "company.com/zone2"},
+					Allocatable:  &storage.VolumeNodeResources{Count: utilpointer.Int32Ptr(10)},
 				},
 			},
 		},
@@ -88,6 +90,43 @@ func TestCSINodeValidation(t *testing.T) {
 			false,
 		},
 		{
+			"valid csinode with empty allocatable",
+			&storage.CSINode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "foo",
+				},
+				Spec: storage.CSINodeSpec{
+					Drivers: []storage.CSINodeDriver{
+						{
+							Name:         "valid-driver-name",
+							NodeID:       "valid-node",
+							TopologyKeys: []string{"company.com/zone1", "company.com/zone2"},
+						},
+					},
+				},
+			},
+			false,
+		},
+		{
+			"valid csinode with missing volume limits",
+			&storage.CSINode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "foo",
+				},
+				Spec: storage.CSINodeSpec{
+					Drivers: []storage.CSINodeDriver{
+						{
+							Name:         "valid-driver-name",
+							NodeID:       "valid-node",
+							TopologyKeys: []string{"company.com/zone1", "company.com/zone2"},
+							Allocatable:  &storage.VolumeNodeResources{Count: nil},
+						},
+					},
+				},
+			},
+			false,
+		},
+		{
 			"invalid driver name",
 			&storage.CSINode{
 				ObjectMeta: metav1.ObjectMeta{
@@ -99,6 +138,7 @@ func TestCSINodeValidation(t *testing.T) {
 							Name:         "$csi-driver@",
 							NodeID:       "valid-node",
 							TopologyKeys: []string{"company.com/zone1", "company.com/zone2"},
+							Allocatable:  &storage.VolumeNodeResources{Count: utilpointer.Int32Ptr(10)},
 						},
 					},
 				},
@@ -117,6 +157,26 @@ func TestCSINodeValidation(t *testing.T) {
 							Name:         "valid-driver-name",
 							NodeID:       "",
 							TopologyKeys: []string{"company.com/zone1", "company.com/zone2"},
+							Allocatable:  &storage.VolumeNodeResources{Count: utilpointer.Int32Ptr(10)},
+						},
+					},
+				},
+			},
+			true,
+		},
+		{
+			"invalid allocatable with negative volumes limit",
+			&storage.CSINode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "foo",
+				},
+				Spec: storage.CSINodeSpec{
+					Drivers: []storage.CSINodeDriver{
+						{
+							Name:         "valid-driver-name",
+							NodeID:       "valid-node",
+							TopologyKeys: []string{"company.com/zone1", "company.com/zone2"},
+							Allocatable:  &storage.VolumeNodeResources{Count: utilpointer.Int32Ptr(-1)},
 						},
 					},
 				},
@@ -135,6 +195,7 @@ func TestCSINodeValidation(t *testing.T) {
 							Name:         "valid-driver-name",
 							NodeID:       "valid-node",
 							TopologyKeys: []string{"company.com/zone1", ""},
+							Allocatable:  &storage.VolumeNodeResources{Count: utilpointer.Int32Ptr(10)},
 						},
 					},
 				},
