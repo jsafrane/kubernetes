@@ -19,9 +19,11 @@ package predicates
 import (
 	"fmt"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
+	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/util/rand"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	csilib "k8s.io/csi-translation-lib"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/features"
 	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
@@ -30,9 +32,10 @@ import (
 
 // CSIMaxVolumeLimitChecker defines predicate needed for counting CSI volumes
 type CSIMaxVolumeLimitChecker struct {
-	pvInfo               PersistentVolumeInfo
-	pvcInfo              PersistentVolumeClaimInfo
-	scInfo               StorageClassInfo
+	pvInfo  PersistentVolumeInfo
+	pvcInfo PersistentVolumeClaimInfo
+	scInfo  StorageClassInfo
+
 	randomVolumeIDPrefix string
 }
 
@@ -61,6 +64,16 @@ func (c *CSIMaxVolumeLimitChecker) attachableLimitPredicate(
 		return true, nil, nil
 	}
 
+	// a map of unique volume name/csi volume handle and volume limit key
+	newVolumes := make(map[string]string)
+	if err := c.filterAttachableVolumes(nodeInfo, pod.Spec.Volumes, pod.Namespace, newVolumes); err != nil {
+		return false, nil, err
+	}
+
+	if len(newVolumes) == 0 {
+		return true, nil, nil
+	}
+
 	nodeVolumeLimits := nodeInfo.VolumeLimits()
 
 	// if node does not have volume limits this predicate should exit
@@ -69,19 +82,9 @@ func (c *CSIMaxVolumeLimitChecker) attachableLimitPredicate(
 	}
 
 	// a map of unique volume name/csi volume handle and volume limit key
-	newVolumes := make(map[string]string)
-	if err := c.filterAttachableVolumes(pod.Spec.Volumes, pod.Namespace, newVolumes); err != nil {
-		return false, nil, err
-	}
-
-	if len(newVolumes) == 0 {
-		return true, nil, nil
-	}
-
-	// a map of unique volume name/csi volume handle and volume limit key
 	attachedVolumes := make(map[string]string)
 	for _, existingPod := range nodeInfo.Pods() {
-		if err := c.filterAttachableVolumes(existingPod.Spec.Volumes, existingPod.Namespace, attachedVolumes); err != nil {
+		if err := c.filterAttachableVolumes(nodeInfo, existingPod.Spec.Volumes, existingPod.Namespace, attachedVolumes); err != nil {
 			return false, nil, err
 		}
 	}
@@ -89,9 +92,9 @@ func (c *CSIMaxVolumeLimitChecker) attachableLimitPredicate(
 	newVolumeCount := map[string]int{}
 	attachedVolumeCount := map[string]int{}
 
-	for volumeName, volumeLimitKey := range attachedVolumes {
-		if _, ok := newVolumes[volumeName]; ok {
-			delete(newVolumes, volumeName)
+	for volumeUniqueName, volumeLimitKey := range attachedVolumes {
+		if _, ok := newVolumes[volumeUniqueName]; ok {
+			delete(newVolumes, volumeUniqueName)
 		}
 		attachedVolumeCount[volumeLimitKey]++
 	}
@@ -114,7 +117,7 @@ func (c *CSIMaxVolumeLimitChecker) attachableLimitPredicate(
 }
 
 func (c *CSIMaxVolumeLimitChecker) filterAttachableVolumes(
-	volumes []v1.Volume, namespace string, result map[string]string) error {
+	nodeInfo *schedulernodeinfo.NodeInfo, volumes []v1.Volume, namespace string, result map[string]string) error {
 
 	for _, vol := range volumes {
 		// CSI volumes can only be used as persistent volumes
@@ -134,33 +137,36 @@ func (c *CSIMaxVolumeLimitChecker) filterAttachableVolumes(
 			continue
 		}
 
-		driverName, volumeHandle := c.getCSIDriver(pvc)
+		csiNode := nodeInfo.CSINode()
+		driverName, volumeHandle := c.getCSIDriverInfo(csiNode, pvc)
 		// if we can't find driver name or volume handle - we don't count this volume.
 		if driverName == "" || volumeHandle == "" {
 			continue
 		}
-		volumeLimitKey := volumeutil.GetCSIAttachLimitKey(driverName)
-		result[volumeHandle] = volumeLimitKey
 
+		volumeUniqueName := fmt.Sprintf("%s/%s", driverName, volumeHandle)
+		volumeLimitKey := volumeutil.GetCSIAttachLimitKey(driverName)
+		result[volumeUniqueName] = volumeLimitKey
 	}
 	return nil
 }
 
-func (c *CSIMaxVolumeLimitChecker) getCSIDriver(pvc *v1.PersistentVolumeClaim) (string, string) {
+// getCSIDriverInfo returns the CSI driver name and volume ID of a given PVC.
+// If the PVC is from a migrated in-tree plugin, this function will return
+// the information of the CSI driver that the plugin has been migrated to.
+func (c *CSIMaxVolumeLimitChecker) getCSIDriverInfo(csiNode *storagev1beta1.CSINode, pvc *v1.PersistentVolumeClaim) (string, string) {
 	pvName := pvc.Spec.VolumeName
 	namespace := pvc.Namespace
 	pvcName := pvc.Name
 
-	placeHolderCSIDriver := ""
-	placeHolderHandle := ""
 	if pvName == "" {
 		klog.V(5).Infof("Persistent volume had no name for claim %s/%s", namespace, pvcName)
 		return c.getDriverNameFromSC(pvc)
 	}
-	pv, err := c.pvInfo.GetPersistentVolumeInfo(pvName)
 
+	pv, err := c.pvInfo.GetPersistentVolumeInfo(pvName)
 	if err != nil {
-		klog.V(4).Infof("Unable to look up PV info for PVC %s/%s and PV %s", namespace, pvcName, pvName)
+		klog.V(5).Infof("Unable to look up PV info for PVC %s/%s and PV %s", namespace, pvcName, pvName)
 		// If we can't fetch PV associated with PVC, may be it got deleted
 		// or PVC was prebound to a PVC that hasn't been created yet.
 		// fallback to using StorageClass for volume counting
@@ -169,9 +175,36 @@ func (c *CSIMaxVolumeLimitChecker) getCSIDriver(pvc *v1.PersistentVolumeClaim) (
 
 	csiSource := pv.Spec.PersistentVolumeSource.CSI
 	if csiSource == nil {
-		klog.V(5).Infof("Not considering non-CSI volume %s/%s", namespace, pvcName)
-		return placeHolderCSIDriver, placeHolderHandle
+		// We make a fast path for non-CSI volumes that aren't migratable
+		if !csilib.IsPVMigratable(pv) {
+			return "", ""
+		}
+
+		pluginName, err := csilib.GetInTreePluginNameFromSpec(pv, nil)
+		if err != nil {
+			klog.V(5).Infof("Unable to look up plugin name from PV spec: %v", err)
+			return "", ""
+		}
+
+		if !isCSIMigrationOn(csiNode, pluginName) {
+			klog.V(5).Infof("CSI Migration of plugin %s is not enabled", pluginName)
+			return "", ""
+		}
+
+		csiPV, err := csilib.TranslateInTreePVToCSI(pv)
+		if err != nil {
+			klog.V(5).Infof("Unable to translate in-tree volume to CSI: %v", err)
+			return "", ""
+		}
+
+		if csiPV.Spec.PersistentVolumeSource.CSI == nil {
+			klog.V(5).Infof("Unable to get a valid volume source for translated PV %s", pvName)
+			return "", ""
+		}
+
+		csiSource = csiPV.Spec.PersistentVolumeSource.CSI
 	}
+
 	return csiSource.Driver, csiSource.VolumeHandle
 }
 

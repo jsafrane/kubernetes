@@ -18,6 +18,7 @@ package fake
 
 import (
 	"k8s.io/api/core/v1"
+	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	internalcache "k8s.io/kubernetes/pkg/scheduler/internal/cache"
@@ -73,6 +74,15 @@ func (c *Cache) UpdateNode(oldNode, newNode *v1.Node) error { return nil }
 
 // RemoveNode is a fake method for testing.
 func (c *Cache) RemoveNode(node *v1.Node) error { return nil }
+
+// AddCSINode is a fake method for testing.
+func (c *Cache) AddCSINode(csiNode *storagev1beta1.CSINode) error { return nil }
+
+// UpdateCSINode is a fake method for testing.
+func (c *Cache) UpdateCSINode(oldCSINode, newCSINode *storagev1beta1.CSINode) error { return nil }
+
+// RemoveCSINode is a fake method for testing.
+func (c *Cache) RemoveCSINode(node *storagev1beta1.CSINode) error { return nil }
 
 // UpdateNodeInfoSnapshot is a fake method for testing.
 func (c *Cache) UpdateNodeInfoSnapshot(nodeSnapshot *internalcache.NodeInfoSnapshot) error {
