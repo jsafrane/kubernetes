@@ -58,13 +58,14 @@ func (c *CSIMaxVolumeLimitChecker) attachableLimitPredicate(
 	if !utilfeature.DefaultFeatureGate.Enabled(features.AttachVolumeLimit) {
 		return true, nil, nil
 	}
+
 	// If a pod doesn't have any volume attached to it, the predicate will always be true.
 	// Thus we make a fast path for it, to avoid unnecessary computations in this case.
 	if len(pod.Spec.Volumes) == 0 {
 		return true, nil, nil
 	}
 
-	// a map of unique volume name/csi volume handle and volume limit key
+	// A map of unique volume name/csi volume handle and volume limit key.
 	newVolumes := make(map[string]string)
 	if err := c.filterAttachableVolumes(nodeInfo, pod.Spec.Volumes, pod.Namespace, newVolumes); err != nil {
 		return false, nil, err
@@ -74,14 +75,7 @@ func (c *CSIMaxVolumeLimitChecker) attachableLimitPredicate(
 		return true, nil, nil
 	}
 
-	nodeVolumeLimits := nodeInfo.VolumeLimits()
-
-	// if node does not have volume limits this predicate should exit
-	if len(nodeVolumeLimits) == 0 {
-		return true, nil, nil
-	}
-
-	// a map of unique volume name/csi volume handle and volume limit key
+	// A map of unique volume name/csi volume handle and volume limit key.
 	attachedVolumes := make(map[string]string)
 	for _, existingPod := range nodeInfo.Pods() {
 		if err := c.filterAttachableVolumes(nodeInfo, existingPod.Spec.Volumes, existingPod.Namespace, attachedVolumes); err != nil {
@@ -89,9 +83,7 @@ func (c *CSIMaxVolumeLimitChecker) attachableLimitPredicate(
 		}
 	}
 
-	newVolumeCount := map[string]int{}
 	attachedVolumeCount := map[string]int{}
-
 	for volumeUniqueName, volumeLimitKey := range attachedVolumes {
 		if _, ok := newVolumes[volumeUniqueName]; ok {
 			delete(newVolumes, volumeUniqueName)
@@ -99,13 +91,20 @@ func (c *CSIMaxVolumeLimitChecker) attachableLimitPredicate(
 		attachedVolumeCount[volumeLimitKey]++
 	}
 
+	newVolumeCount := map[string]int{}
 	for _, volumeLimitKey := range newVolumes {
 		newVolumeCount[volumeLimitKey]++
 	}
 
+	// We don't return early if the node has no limits because we want to
+	// report an error if a CSI driver is not installed in the node.
+	nodeVolumeLimits := nodeInfo.VolumeLimits()
 	for volumeLimitKey, count := range newVolumeCount {
 		maxVolumeLimit, ok := nodeVolumeLimits[v1.ResourceName(volumeLimitKey)]
-		if ok {
+		if !ok {
+			return false, []PredicateFailureReason{ErrNodeMissingCSIDriverInstalled}, nil
+		}
+		if maxVolumeLimit > 0 {
 			currentVolumeCount := attachedVolumeCount[volumeLimitKey]
 			if currentVolumeCount+count > int(maxVolumeLimit) {
 				return false, []PredicateFailureReason{ErrMaxVolumeCountExceeded}, nil
