@@ -19,13 +19,17 @@ package predicates
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	csilibplugins "k8s.io/csi-translation-lib/plugins"
 	"k8s.io/kubernetes/pkg/features"
+	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 )
 
 func TestCSIVolumeCountPredicate(t *testing.T) {
@@ -154,15 +158,86 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			},
 		},
 	}
+	// In-tree volumes
+	inTreeOneVolPod := &v1.Pod{
+		Spec: v1.PodSpec{
+			Volumes: []v1.Volume{
+				{
+					VolumeSource: v1.VolumeSource{
+						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "csi-kubernetes.io/aws-ebs-0",
+						},
+					},
+				},
+			},
+		},
+	}
+	inTreeTwoVolPod := &v1.Pod{
+		Spec: v1.PodSpec{
+			Volumes: []v1.Volume{
+				{
+					VolumeSource: v1.VolumeSource{
+						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "csi-kubernetes.io/aws-ebs-1",
+						},
+					},
+				},
+				{
+					VolumeSource: v1.VolumeSource{
+						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "csi-kubernetes.io/aws-ebs-2",
+						},
+					},
+				},
+			},
+		},
+	}
+	// pods with matching csi driver names
+	csiEBSOneVolPod := &v1.Pod{
+		Spec: v1.PodSpec{
+			Volumes: []v1.Volume{
+				{
+					VolumeSource: v1.VolumeSource{
+						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "csi-ebs.csi.aws.com-0",
+						},
+					},
+				},
+			},
+		},
+	}
+	csiEBSTwoVolPod := &v1.Pod{
+		Spec: v1.PodSpec{
+			Volumes: []v1.Volume{
+				{
+					VolumeSource: v1.VolumeSource{
+						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "csi-ebs.csi.aws.com-1",
+						},
+					},
+				},
+				{
+					VolumeSource: v1.VolumeSource{
+						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "csi-ebs.csi.aws.com-2",
+						},
+					},
+				},
+			},
+		},
+	}
 
 	tests := []struct {
-		newPod       *v1.Pod
-		existingPods []*v1.Pod
-		filterName   string
-		maxVols      int
-		driverNames  []string
-		fits         bool
-		test         string
+		newPod                *v1.Pod
+		existingPods          []*v1.Pod
+		filterName            string
+		maxVols               int
+		driverNames           []string
+		fits                  bool
+		test                  string
+		migrationEnabled      bool
+		limitSource           string
+		expectedFailureReason *PredicateFailureError
 	}{
 		{
 			newPod:       oneVolPod,
@@ -172,6 +247,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			driverNames:  []string{"ebs"},
 			fits:         true,
 			test:         "fits when node capacity >= new pods CSI volume",
+			limitSource:  "node",
 		},
 		{
 			newPod:       oneVolPod,
@@ -181,6 +257,29 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			driverNames:  []string{"ebs"},
 			fits:         false,
 			test:         "doesn't when node capacity <= pods CSI volume",
+			limitSource:  "node",
+		},
+		// should stop pod scheduling if driver is not installed
+		{
+			newPod:                oneVolPod,
+			existingPods:          []*v1.Pod{},
+			filterName:            "csi",
+			maxVols:               2,
+			driverNames:           []string{"ebs"},
+			fits:                  false,
+			test:                  "doesn't when node does not have CSI driver",
+			limitSource:           "no-csi-driver",
+			expectedFailureReason: ErrNodeMissingCSIDriverInstalled,
+		},
+		{
+			newPod:       oneVolPod,
+			existingPods: []*v1.Pod{runningPod, twoVolPod},
+			filterName:   "csi",
+			maxVols:      2,
+			driverNames:  []string{"ebs"},
+			fits:         true,
+			test:         "should when driver does not support volume limits",
+			limitSource:  "csinode-with-no-limit",
 		},
 		// should count pending PVCs
 		{
@@ -191,6 +290,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			driverNames:  []string{"ebs"},
 			fits:         false,
 			test:         "count pending PVCs towards capacity <= pods CSI volume",
+			limitSource:  "node",
 		},
 		// two same pending PVCs should be counted as 1
 		{
@@ -201,6 +301,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			driverNames:  []string{"ebs"},
 			fits:         true,
 			test:         "count multiple pending pvcs towards capacity >= pods CSI volume",
+			limitSource:  "node",
 		},
 		// should count PVCs with invalid PV name but valid SC
 		{
@@ -211,6 +312,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			driverNames:  []string{"ebs"},
 			fits:         false,
 			test:         "should count PVCs with invalid PV name but valid SC",
+			limitSource:  "node",
 		},
 		// don't count a volume which has storageclass missing
 		{
@@ -221,6 +323,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			driverNames:  []string{"ebs"},
 			fits:         true,
 			test:         "don't count pvcs with missing SC towards capacity",
+			limitSource:  "node",
 		},
 		// don't count multiple volume types
 		{
@@ -231,6 +334,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			driverNames:  []string{"ebs", "gce"},
 			fits:         true,
 			test:         "don't count pvcs with different type towards capacity",
+			limitSource:  "node",
 		},
 		{
 			newPod:       gceTwoVolPod,
@@ -240,14 +344,108 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			driverNames:  []string{"ebs", "gce"},
 			fits:         true,
 			test:         "don't count pvcs with different type towards capacity",
+			limitSource:  "node",
+		},
+		// Tests for in-tree volume migration
+		{
+			newPod:           inTreeOneVolPod,
+			existingPods:     []*v1.Pod{inTreeTwoVolPod},
+			filterName:       "csi",
+			maxVols:          2,
+			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			fits:             false,
+			migrationEnabled: true,
+			limitSource:      "csinode",
+			test:             "should count in-tree volumes if migration is enabled",
+		},
+		{
+			newPod:           inTreeOneVolPod,
+			existingPods:     []*v1.Pod{inTreeTwoVolPod},
+			filterName:       "csi",
+			maxVols:          2,
+			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			fits:             true,
+			migrationEnabled: false,
+			limitSource:      "csinode",
+			test:             "should not count in-tree volume if migration is disabled",
+		},
+		{
+			newPod:           inTreeOneVolPod,
+			existingPods:     []*v1.Pod{inTreeTwoVolPod},
+			filterName:       "csi",
+			maxVols:          2,
+			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			fits:             true,
+			migrationEnabled: true,
+			limitSource:      "csinode-with-no-limit",
+			test:             "should not limit pod if volume used does not report limits",
+		},
+		{
+			newPod:           inTreeOneVolPod,
+			existingPods:     []*v1.Pod{inTreeTwoVolPod},
+			filterName:       "csi",
+			maxVols:          2,
+			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			fits:             true,
+			migrationEnabled: false,
+			limitSource:      "csinode-with-no-limit",
+			test:             "should not limit in-tree pod if migration is disabled",
+		},
+		{
+			newPod:                inTreeOneVolPod,
+			existingPods:          []*v1.Pod{inTreeTwoVolPod},
+			filterName:            "csi",
+			maxVols:               3,
+			driverNames:           []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			fits:                  false,
+			migrationEnabled:      true,
+			limitSource:           "no-csi-driver",
+			test:                  "should not schedule pod if CSI driver is not installed",
+			expectedFailureReason: ErrNodeMissingCSIDriverInstalled,
+		},
+		// mixed volumes
+		{
+			newPod:           inTreeOneVolPod,
+			existingPods:     []*v1.Pod{csiEBSTwoVolPod},
+			filterName:       "csi",
+			maxVols:          2,
+			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			fits:             false,
+			migrationEnabled: true,
+			limitSource:      "csinode",
+			test:             "should count in-tree and csi volumes if migration is enabled",
+		},
+		{
+			newPod:           csiEBSOneVolPod,
+			existingPods:     []*v1.Pod{csiEBSTwoVolPod, inTreeTwoVolPod},
+			filterName:       "csi",
+			maxVols:          3,
+			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			fits:             true,
+			migrationEnabled: false,
+			limitSource:      "csinode",
+			test:             "should not count in-tree and count csi volumes if migration is disabled",
 		},
 	}
 
 	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.AttachVolumeLimit, true)()
-	expectedFailureReasons := []PredicateFailureReason{ErrMaxVolumeCountExceeded}
 	// running attachable predicate tests with feature gate and limit present on nodes
 	for _, test := range tests {
-		node := getNodeWithPodAndVolumeLimits(test.existingPods, int64(test.maxVols), test.driverNames...)
+		node := getNodeWithPodAndVolumeLimits(test.limitSource, test.existingPods, int64(test.maxVols), test.driverNames...)
+		if test.migrationEnabled {
+			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSIMigration, true)()
+			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSIMigrationAWS, true)()
+			enableMigrationOnNode(node, csilibplugins.AWSEBSInTreePluginName)
+		} else {
+			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSIMigration, false)()
+			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSIMigrationAWS, false)()
+		}
+
+		expectedFailureReasons := []PredicateFailureReason{ErrMaxVolumeCountExceeded}
+		if test.expectedFailureReason != nil {
+			expectedFailureReasons = []PredicateFailureReason{test.expectedFailureReason}
+		}
+
 		pred := NewCSIMaxVolumeLimitPredicate(getFakeCSIPVInfo(test.filterName, test.driverNames...),
 			getFakeCSIPVCInfo(test.filterName, "csi-sc", test.driverNames...),
 			getFakeCSIStorageClassInfo("csi-sc", test.driverNames[0]))
@@ -256,12 +454,13 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 		if err != nil {
 			t.Errorf("Using allocatable [%s]%s: unexpected error: %v", test.filterName, test.test, err)
 		}
-		if !fits && !reflect.DeepEqual(reasons, expectedFailureReasons) {
+		if !fits && !reflect.DeepEqual(expectedFailureReasons, reasons) {
 			t.Errorf("Using allocatable [%s]%s: unexpected failure reasons: %v, want: %v", test.filterName, test.test, reasons, expectedFailureReasons)
 		}
 		if fits != test.fits {
 			t.Errorf("Using allocatable [%s]%s: expected %v, got %v", test.filterName, test.test, test.fits, fits)
 		}
+
 	}
 }
 
@@ -280,6 +479,21 @@ func getFakeCSIPVInfo(volumeName string, driverNames ...string) FakePersistentVo
 						},
 					},
 				},
+			}
+
+			if driver == csilibplugins.AWSEBSInTreePluginName {
+				pv.Spec.PersistentVolumeSource = v1.PersistentVolumeSource{
+					AWSElasticBlockStore: &v1.AWSElasticBlockStoreVolumeSource{
+						VolumeID: volumeHandle,
+					},
+				}
+			} else {
+				pv.Spec.PersistentVolumeSource = v1.PersistentVolumeSource{
+					CSI: &v1.CSIPersistentVolumeSource{
+						Driver:       driver,
+						VolumeHandle: volumeHandle,
+					},
+				}
 			}
 			pvInfos = append(pvInfos, pv)
 		}
@@ -315,6 +529,22 @@ func getFakeCSIPVCInfo(volumeName, scName string, driverNames ...string) FakePer
 		Spec:       v1.PersistentVolumeClaimSpec{StorageClassName: &scName, VolumeName: "missing-in-action"},
 	})
 	return pvcInfos
+}
+
+func enableMigrationOnNode(nodeInfo *schedulernodeinfo.NodeInfo, pluginName string) {
+	csiNode := nodeInfo.CSINode()
+	nodeInfoAnnotations := csiNode.GetAnnotations()
+	if nodeInfoAnnotations == nil {
+		nodeInfoAnnotations = map[string]string{}
+	}
+
+	newAnnotationSet := sets.NewString()
+	newAnnotationSet.Insert(pluginName)
+	nas := strings.Join(newAnnotationSet.List(), ",")
+	nodeInfoAnnotations[v1.MigratedPluginsAnnotationKey] = nas
+
+	csiNode.Annotations = nodeInfoAnnotations
+	nodeInfo.SetCSINode(csiNode)
 }
 
 func getFakeCSIStorageClassInfo(scName, provisionerName string) FakeStorageClassInfo {
