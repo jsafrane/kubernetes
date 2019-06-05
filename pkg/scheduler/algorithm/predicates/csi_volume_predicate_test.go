@@ -33,52 +33,20 @@ import (
 )
 
 const (
+	ebsCSIDriverName = csilibplugins.AWSEBSDriverName
+	gceCSIDriverName = csilibplugins.GCEPDDriverName
+
 	hostpathInTreePluginName = "kubernetes.io/hostpath"
 )
 
 func TestCSIVolumeCountPredicate(t *testing.T) {
-	// for pods with CSI pvcs
-	oneVolPod := &v1.Pod{
-		Spec: v1.PodSpec{
-			Volumes: []v1.Volume{
-				{
-					VolumeSource: v1.VolumeSource{
-						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "csi-ebs-0",
-						},
-					},
-				},
-			},
-		},
-	}
-	twoVolPod := &v1.Pod{
-		Spec: v1.PodSpec{
-			Volumes: []v1.Volume{
-				{
-					VolumeSource: v1.VolumeSource{
-						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "csi-ebs-1",
-						},
-					},
-				},
-				{
-					VolumeSource: v1.VolumeSource{
-						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "csi-ebs-2",
-						},
-					},
-				},
-			},
-		},
-	}
-
 	runningPod := &v1.Pod{
 		Spec: v1.PodSpec{
 			Volumes: []v1.Volume{
 				{
 					VolumeSource: v1.VolumeSource{
 						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "csi-ebs-3",
+							ClaimName: "csi-ebs.csi.aws.com-3",
 						},
 					},
 				},
@@ -148,14 +116,14 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 				{
 					VolumeSource: v1.VolumeSource{
 						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "cs-gce-1",
+							ClaimName: "csi-pd.csi.storage.gke.io-1",
 						},
 					},
 				},
 				{
 					VolumeSource: v1.VolumeSource{
 						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "csi-gce-2",
+							ClaimName: "csi-pd.csi.storage.gke.io-2",
 						},
 					},
 				},
@@ -257,108 +225,108 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 		expectedFailureReason *PredicateFailureError
 	}{
 		{
-			newPod:       oneVolPod,
-			existingPods: []*v1.Pod{runningPod, twoVolPod},
+			newPod:       csiEBSOneVolPod,
+			existingPods: []*v1.Pod{runningPod, csiEBSTwoVolPod},
 			filterName:   "csi",
 			maxVols:      4,
-			driverNames:  []string{"ebs"},
+			driverNames:  []string{ebsCSIDriverName},
 			fits:         true,
 			test:         "fits when node capacity >= new pods CSI volume",
 			limitSource:  "node",
 		},
 		{
-			newPod:       oneVolPod,
-			existingPods: []*v1.Pod{runningPod, twoVolPod},
+			newPod:       csiEBSOneVolPod,
+			existingPods: []*v1.Pod{runningPod, csiEBSTwoVolPod},
 			filterName:   "csi",
 			maxVols:      2,
-			driverNames:  []string{"ebs"},
+			driverNames:  []string{ebsCSIDriverName},
 			fits:         false,
 			test:         "doesn't when node capacity <= pods CSI volume",
 			limitSource:  "node",
 		},
 		// should stop pod scheduling if driver is not installed
 		{
-			newPod:                oneVolPod,
+			newPod:                csiEBSOneVolPod,
 			existingPods:          []*v1.Pod{},
 			filterName:            "csi",
 			maxVols:               2,
-			driverNames:           []string{"ebs"},
+			driverNames:           []string{ebsCSIDriverName},
 			fits:                  false,
 			test:                  "doesn't when node does not have CSI driver",
 			limitSource:           "no-csi-driver",
 			expectedFailureReason: ErrNodeMissingCSIDriverInstalled,
 		},
 		{
-			newPod:       oneVolPod,
-			existingPods: []*v1.Pod{runningPod, twoVolPod},
+			newPod:       csiEBSOneVolPod,
+			existingPods: []*v1.Pod{runningPod, csiEBSTwoVolPod},
 			filterName:   "csi",
 			maxVols:      2,
-			driverNames:  []string{"ebs"},
+			driverNames:  []string{ebsCSIDriverName},
 			fits:         true,
 			test:         "should when driver does not support volume limits",
 			limitSource:  "csinode-with-no-limit",
 		},
 		// should count pending PVCs
 		{
-			newPod:       oneVolPod,
-			existingPods: []*v1.Pod{pendingVolumePod, twoVolPod},
+			newPod:       csiEBSOneVolPod,
+			existingPods: []*v1.Pod{pendingVolumePod, csiEBSTwoVolPod},
 			filterName:   "csi",
 			maxVols:      2,
-			driverNames:  []string{"ebs"},
+			driverNames:  []string{ebsCSIDriverName},
 			fits:         false,
 			test:         "count pending PVCs towards capacity <= pods CSI volume",
 			limitSource:  "node",
 		},
 		// two same pending PVCs should be counted as 1
 		{
-			newPod:       oneVolPod,
-			existingPods: []*v1.Pod{pendingVolumePod, unboundPVCPod2, twoVolPod},
+			newPod:       csiEBSOneVolPod,
+			existingPods: []*v1.Pod{pendingVolumePod, unboundPVCPod2, csiEBSTwoVolPod},
 			filterName:   "csi",
 			maxVols:      4,
-			driverNames:  []string{"ebs"},
+			driverNames:  []string{ebsCSIDriverName},
 			fits:         true,
 			test:         "count multiple pending pvcs towards capacity >= pods CSI volume",
 			limitSource:  "node",
 		},
 		// should count PVCs with invalid PV name but valid SC
 		{
-			newPod:       oneVolPod,
-			existingPods: []*v1.Pod{missingPVPod, twoVolPod},
+			newPod:       csiEBSOneVolPod,
+			existingPods: []*v1.Pod{missingPVPod, csiEBSTwoVolPod},
 			filterName:   "csi",
 			maxVols:      2,
-			driverNames:  []string{"ebs"},
+			driverNames:  []string{ebsCSIDriverName},
 			fits:         false,
 			test:         "should count PVCs with invalid PV name but valid SC",
 			limitSource:  "node",
 		},
 		// don't count a volume which has storageclass missing
 		{
-			newPod:       oneVolPod,
+			newPod:       csiEBSOneVolPod,
 			existingPods: []*v1.Pod{runningPod, noSCPVCPod},
 			filterName:   "csi",
 			maxVols:      2,
-			driverNames:  []string{"ebs"},
+			driverNames:  []string{ebsCSIDriverName},
 			fits:         true,
 			test:         "don't count pvcs with missing SC towards capacity",
 			limitSource:  "node",
 		},
 		// don't count multiple volume types
 		{
-			newPod:       oneVolPod,
-			existingPods: []*v1.Pod{gceTwoVolPod, twoVolPod},
+			newPod:       csiEBSOneVolPod,
+			existingPods: []*v1.Pod{gceTwoVolPod, csiEBSTwoVolPod},
 			filterName:   "csi",
 			maxVols:      2,
-			driverNames:  []string{"ebs", "gce"},
+			driverNames:  []string{ebsCSIDriverName, gceCSIDriverName},
 			fits:         false,
 			test:         "count pvcs with the same type towards capacity",
 			limitSource:  "node",
 		},
 		{
 			newPod:       gceTwoVolPod,
-			existingPods: []*v1.Pod{twoVolPod, runningPod},
+			existingPods: []*v1.Pod{csiEBSTwoVolPod, runningPod},
 			filterName:   "csi",
 			maxVols:      2,
-			driverNames:  []string{"ebs", "gce"},
+			driverNames:  []string{ebsCSIDriverName, gceCSIDriverName},
 			fits:         true,
 			test:         "don't count pvcs with different type towards capacity",
 			limitSource:  "node",
@@ -369,7 +337,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			existingPods:     []*v1.Pod{inTreeTwoVolPod},
 			filterName:       "csi",
 			maxVols:          2,
-			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, ebsCSIDriverName},
 			fits:             false,
 			migrationEnabled: true,
 			limitSource:      "csinode",
@@ -380,7 +348,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			existingPods:     []*v1.Pod{inTreeTwoVolPod},
 			filterName:       "csi",
 			maxVols:          2,
-			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, ebsCSIDriverName},
 			fits:             true,
 			migrationEnabled: false,
 			limitSource:      "csinode",
@@ -391,7 +359,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			existingPods:     []*v1.Pod{inTreeTwoVolPod},
 			filterName:       "csi",
 			maxVols:          2,
-			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, ebsCSIDriverName},
 			fits:             true,
 			migrationEnabled: true,
 			limitSource:      "csinode-with-no-limit",
@@ -402,7 +370,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			existingPods:     []*v1.Pod{inTreeTwoVolPod},
 			filterName:       "csi",
 			maxVols:          2,
-			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, ebsCSIDriverName},
 			fits:             true,
 			migrationEnabled: false,
 			limitSource:      "csinode-with-no-limit",
@@ -413,7 +381,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			existingPods:          []*v1.Pod{inTreeTwoVolPod},
 			filterName:            "csi",
 			maxVols:               3,
-			driverNames:           []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			driverNames:           []string{csilibplugins.AWSEBSInTreePluginName, ebsCSIDriverName},
 			fits:                  false,
 			migrationEnabled:      true,
 			limitSource:           "no-csi-driver",
@@ -425,7 +393,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			existingPods:     []*v1.Pod{csiEBSTwoVolPod},
 			filterName:       "csi",
 			maxVols:          2,
-			driverNames:      []string{hostpathInTreePluginName, "ebs.csi.aws.com"},
+			driverNames:      []string{hostpathInTreePluginName, ebsCSIDriverName},
 			fits:             true,
 			migrationEnabled: true,
 			limitSource:      "csinode",
@@ -437,7 +405,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			existingPods:     []*v1.Pod{csiEBSTwoVolPod},
 			filterName:       "csi",
 			maxVols:          2,
-			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, ebsCSIDriverName},
 			fits:             false,
 			migrationEnabled: true,
 			limitSource:      "csinode",
@@ -448,7 +416,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			existingPods:     []*v1.Pod{inTreeTwoVolPod},
 			filterName:       "csi",
 			maxVols:          2,
-			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, ebsCSIDriverName},
 			fits:             false,
 			migrationEnabled: true,
 			limitSource:      "csinode",
@@ -459,7 +427,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			existingPods:     []*v1.Pod{csiEBSTwoVolPod, inTreeTwoVolPod},
 			filterName:       "csi",
 			maxVols:          3,
-			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, ebsCSIDriverName},
 			fits:             true,
 			migrationEnabled: false,
 			limitSource:      "csinode",
@@ -470,7 +438,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			existingPods:     []*v1.Pod{csiEBSTwoVolPod},
 			filterName:       "csi",
 			maxVols:          2,
-			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, "ebs.csi.aws.com"},
+			driverNames:      []string{csilibplugins.AWSEBSInTreePluginName, ebsCSIDriverName},
 			fits:             true,
 			migrationEnabled: false,
 			limitSource:      "csinode",
