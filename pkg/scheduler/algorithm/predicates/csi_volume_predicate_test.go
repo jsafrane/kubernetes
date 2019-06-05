@@ -53,7 +53,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 				{
 					VolumeSource: v1.VolumeSource{
 						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "cs-ebs-1",
+							ClaimName: "csi-ebs-1",
 						},
 					},
 				},
@@ -297,7 +297,7 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			newPod:       oneVolPod,
 			existingPods: []*v1.Pod{pendingVolumePod, unboundPVCPod2, twoVolPod},
 			filterName:   "csi",
-			maxVols:      3,
+			maxVols:      4,
 			driverNames:  []string{"ebs"},
 			fits:         true,
 			test:         "count multiple pending pvcs towards capacity >= pods CSI volume",
@@ -332,8 +332,8 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			filterName:   "csi",
 			maxVols:      2,
 			driverNames:  []string{"ebs", "gce"},
-			fits:         true,
-			test:         "don't count pvcs with different type towards capacity",
+			fits:         false,
+			test:         "count pvcs with the same type towards capacity",
 			limitSource:  "node",
 		},
 		{
