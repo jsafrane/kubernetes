@@ -32,6 +32,10 @@ import (
 	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 )
 
+const (
+	hostpathInTreePluginName = "kubernetes.io/hostpath"
+)
+
 func TestCSIVolumeCountPredicate(t *testing.T) {
 	// for pods with CSI pvcs
 	oneVolPod := &v1.Pod{
@@ -226,6 +230,19 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			},
 		},
 	}
+	inTreeNonMigratableOneVolPod := &v1.Pod{
+		Spec: v1.PodSpec{
+			Volumes: []v1.Volume{
+				{
+					VolumeSource: v1.VolumeSource{
+						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "csi-kubernetes.io/hostpath-0",
+						},
+					},
+				},
+			},
+		},
+	}
 
 	tests := []struct {
 		newPod                *v1.Pod
@@ -403,6 +420,17 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 			test:                  "should not schedule pod if CSI driver is not installed",
 			expectedFailureReason: ErrNodeMissingCSIDriverInstalled,
 		},
+		{
+			newPod:           inTreeNonMigratableOneVolPod,
+			existingPods:     []*v1.Pod{csiEBSTwoVolPod},
+			filterName:       "csi",
+			maxVols:          2,
+			driverNames:      []string{hostpathInTreePluginName, "ebs.csi.aws.com"},
+			fits:             true,
+			migrationEnabled: true,
+			limitSource:      "csinode",
+			test:             "should not count non-migratable in-tree volumes",
+		},
 		// mixed volumes
 		{
 			newPod:           inTreeOneVolPod,
@@ -504,13 +532,20 @@ func getFakeCSIPVInfo(volumeName string, driverNames ...string) FakePersistentVo
 				},
 			}
 
-			if driver == csilibplugins.AWSEBSInTreePluginName {
+			switch driver {
+			case csilibplugins.AWSEBSInTreePluginName:
 				pv.Spec.PersistentVolumeSource = v1.PersistentVolumeSource{
 					AWSElasticBlockStore: &v1.AWSElasticBlockStoreVolumeSource{
 						VolumeID: volumeHandle,
 					},
 				}
-			} else {
+			case hostpathInTreePluginName:
+				pv.Spec.PersistentVolumeSource = v1.PersistentVolumeSource{
+					HostPath: &v1.HostPathVolumeSource{
+						Path: "/tmp",
+					},
+				}
+			default:
 				pv.Spec.PersistentVolumeSource = v1.PersistentVolumeSource{
 					CSI: &v1.CSIPersistentVolumeSource{
 						Driver:       driver,
