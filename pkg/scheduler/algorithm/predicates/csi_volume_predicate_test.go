@@ -431,36 +431,37 @@ func TestCSIVolumeCountPredicate(t *testing.T) {
 	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.AttachVolumeLimit, true)()
 	// running attachable predicate tests with feature gate and limit present on nodes
 	for _, test := range tests {
-		node := getNodeWithPodAndVolumeLimits(test.limitSource, test.existingPods, int64(test.maxVols), test.driverNames...)
-		if test.migrationEnabled {
-			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSIMigration, true)()
-			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSIMigrationAWS, true)()
-			enableMigrationOnNode(node, csilibplugins.AWSEBSInTreePluginName)
-		} else {
-			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSIMigration, false)()
-			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSIMigrationAWS, false)()
-		}
+		t.Run(test.test, func(t *testing.T) {
+			node := getNodeWithPodAndVolumeLimits(test.limitSource, test.existingPods, int64(test.maxVols), test.driverNames...)
+			if test.migrationEnabled {
+				defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSIMigration, true)()
+				defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSIMigrationAWS, true)()
+				enableMigrationOnNode(node, csilibplugins.AWSEBSInTreePluginName)
+			} else {
+				defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSIMigration, false)()
+				defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSIMigrationAWS, false)()
+			}
 
-		expectedFailureReasons := []PredicateFailureReason{ErrMaxVolumeCountExceeded}
-		if test.expectedFailureReason != nil {
-			expectedFailureReasons = []PredicateFailureReason{test.expectedFailureReason}
-		}
+			expectedFailureReasons := []PredicateFailureReason{ErrMaxVolumeCountExceeded}
+			if test.expectedFailureReason != nil {
+				expectedFailureReasons = []PredicateFailureReason{test.expectedFailureReason}
+			}
 
-		pred := NewCSIMaxVolumeLimitPredicate(getFakeCSIPVInfo(test.filterName, test.driverNames...),
-			getFakeCSIPVCInfo(test.filterName, "csi-sc", test.driverNames...),
-			getFakeCSIStorageClassInfo("csi-sc", test.driverNames[0]))
+			pred := NewCSIMaxVolumeLimitPredicate(getFakeCSIPVInfo(test.filterName, test.driverNames...),
+				getFakeCSIPVCInfo(test.filterName, "csi-sc", test.driverNames...),
+				getFakeCSIStorageClassInfo("csi-sc", test.driverNames[0]))
 
-		fits, reasons, err := pred(test.newPod, GetPredicateMetadata(test.newPod, nil), node)
-		if err != nil {
-			t.Errorf("Using allocatable [%s]%s: unexpected error: %v", test.filterName, test.test, err)
-		}
-		if !fits && !reflect.DeepEqual(expectedFailureReasons, reasons) {
-			t.Errorf("Using allocatable [%s]%s: unexpected failure reasons: %v, want: %v", test.filterName, test.test, reasons, expectedFailureReasons)
-		}
-		if fits != test.fits {
-			t.Errorf("Using allocatable [%s]%s: expected %v, got %v", test.filterName, test.test, test.fits, fits)
-		}
-
+			fits, reasons, err := pred(test.newPod, GetPredicateMetadata(test.newPod, nil), node)
+			if err != nil {
+				t.Errorf("Using allocatable [%s]%s: unexpected error: %v", test.filterName, test.test, err)
+			}
+			if !fits && !reflect.DeepEqual(expectedFailureReasons, reasons) {
+				t.Errorf("Using allocatable [%s]%s: unexpected failure reasons: %v, want: %v", test.filterName, test.test, reasons, expectedFailureReasons)
+			}
+			if fits != test.fits {
+				t.Errorf("Using allocatable [%s]%s: expected %v, got %v", test.filterName, test.test, test.fits, fits)
+			}
+		})
 	}
 }
 
