@@ -21,7 +21,6 @@ import (
 	"fmt"
 
 	"k8s.io/api/core/v1"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/component-base/featuregate"
 	csilibplugins "k8s.io/csi-translation-lib/plugins"
 	"k8s.io/kubernetes/pkg/features"
@@ -38,12 +37,14 @@ type PluginNameMapper interface {
 // PluginManager keeps track of migrated state of in-tree plugins
 type PluginManager struct {
 	PluginNameMapper
+	featureGate featuregate.FeatureGate
 }
 
 // NewPluginManager returns a new PluginManager instance
-func NewPluginManager(m PluginNameMapper) PluginManager {
+func NewPluginManager(m PluginNameMapper, featureGate featuregate.FeatureGate) PluginManager {
 	return PluginManager{
 		PluginNameMapper: m,
+		featureGate:      featureGate,
 	}
 }
 
@@ -59,17 +60,17 @@ func (pm PluginManager) IsMigrationCompleteForPlugin(pluginName string) bool {
 
 	switch pluginName {
 	case csilibplugins.AWSEBSInTreePluginName:
-		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAWSComplete)
+		return pm.featureGate.Enabled(features.CSIMigrationAWSComplete)
 	case csilibplugins.GCEPDInTreePluginName:
-		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationGCEComplete)
+		return pm.featureGate.Enabled(features.CSIMigrationGCEComplete)
 	case csilibplugins.AzureFileInTreePluginName:
-		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureFileComplete)
+		return pm.featureGate.Enabled(features.CSIMigrationAzureFileComplete)
 	case csilibplugins.AzureDiskInTreePluginName:
-		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDiskComplete)
+		return pm.featureGate.Enabled(features.CSIMigrationAzureDiskComplete)
 	case csilibplugins.CinderInTreePluginName:
-		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationOpenStackComplete)
+		return pm.featureGate.Enabled(features.CSIMigrationOpenStackComplete)
 	case csilibplugins.VSphereInTreePluginName:
-		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationvSphereComplete)
+		return pm.featureGate.Enabled(features.CSIMigrationvSphereComplete)
 	default:
 		return false
 	}
@@ -79,23 +80,23 @@ func (pm PluginManager) IsMigrationCompleteForPlugin(pluginName string) bool {
 // for a particular storage plugin
 func (pm PluginManager) IsMigrationEnabledForPlugin(pluginName string) bool {
 	// CSIMigration feature should be enabled along with the plugin-specific one
-	if !utilfeature.DefaultFeatureGate.Enabled(features.CSIMigration) {
+	if !pm.featureGate.Enabled(features.CSIMigration) {
 		return false
 	}
 
 	switch pluginName {
 	case csilibplugins.AWSEBSInTreePluginName:
-		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAWS)
+		return pm.featureGate.Enabled(features.CSIMigrationAWS)
 	case csilibplugins.GCEPDInTreePluginName:
-		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationGCE)
+		return pm.featureGate.Enabled(features.CSIMigrationGCE)
 	case csilibplugins.AzureFileInTreePluginName:
-		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureFile)
+		return pm.featureGate.Enabled(features.CSIMigrationAzureFile)
 	case csilibplugins.AzureDiskInTreePluginName:
-		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAzureDisk)
+		return pm.featureGate.Enabled(features.CSIMigrationAzureDisk)
 	case csilibplugins.CinderInTreePluginName:
-		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationOpenStack)
+		return pm.featureGate.Enabled(features.CSIMigrationOpenStack)
 	case csilibplugins.VSphereInTreePluginName:
-		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationvSphere)
+		return pm.featureGate.Enabled(features.CSIMigrationvSphere)
 	default:
 		return false
 	}
