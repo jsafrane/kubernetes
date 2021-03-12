@@ -1122,7 +1122,9 @@ func (og *operationGenerator) GenerateMapVolumeFunc(
 		// Execute common map
 		volumeMapPath, volName := blockVolumeMapper.GetPodDeviceMapPath()
 		mapErr := util.MapBlockVolume(og.blkUtil, devicePath, globalMapPath, volumeMapPath, volName, volumeToMount.Pod.UID)
+		// Update actual state of world
 		if mapErr != nil {
+			og.markVolumeErrorState(volumeToMount, markVolumeOpts, mapErr, actualStateOfWorld)
 			// On failure, return error. Caller will log and retry.
 			eventErr, detailedErr := volumeToMount.GenerateError("MapVolume.MapBlockVolume failed", mapErr)
 			return volumetypes.NewOperationContext(eventErr, detailedErr, migrated)
@@ -1140,6 +1142,13 @@ func (og *operationGenerator) GenerateMapVolumeFunc(
 		og.recorder.Eventf(volumeToMount.Pod, v1.EventTypeNormal, kevents.SuccessfulMountVolume, simpleMsg)
 		klog.V(verbosity).Infof(detailedMsg)
 
+		markVolMountedErr := actualStateOfWorld.MarkVolumeAsMounted(markVolumeOpts)
+		if markVolMountedErr != nil {
+			// On failure, return error. Caller will log and retry.
+			eventErr, detailedErr := volumeToMount.GenerateError("MapVolume.MarkVolumeAsMounted failed", markVolMountedErr)
+			return volumetypes.NewOperationContext(eventErr, detailedErr, migrated)
+		}
+
 		resizeOptions := volume.NodeResizeOptions{
 			DevicePath:      devicePath,
 			DeviceStagePath: stagingPath,
@@ -1148,17 +1157,19 @@ func (og *operationGenerator) GenerateMapVolumeFunc(
 		_, resizeError := og.nodeExpandVolume(volumeToMount, actualStateOfWorld, resizeOptions)
 		if resizeError != nil {
 			klog.Errorf("MapVolume.NodeExpandVolume failed with %v", resizeError)
+			// Resize failed. To make sure NodeExpand is re-tried again on the next attempt,
+			// mark the mounted device as uncertain.
+			markVolumeOpts.VolumeMountState = VolumeMountUncertain
+			markVolumeUncertainErr := actualStateOfWorld.MarkVolumeMountAsUncertain(markVolumeOpts)
+			if markVolumeUncertainErr != nil {
+				// just log, return the resizeError error instead
+				klog.Infof(volumeToMount.GenerateMsgDetailed(
+					"MapVolume.MarkVolumeMountAsUncertain failed",
+					markVolumeUncertainErr.Error()))
+			}
 			eventErr, detailedErr := volumeToMount.GenerateError("MapVolume.MarkVolumeAsMounted failed while expanding volume", resizeError)
 			return volumetypes.NewOperationContext(eventErr, detailedErr, migrated)
 		}
-
-		markVolMountedErr := actualStateOfWorld.MarkVolumeAsMounted(markVolumeOpts)
-		if markVolMountedErr != nil {
-			// On failure, return error. Caller will log and retry.
-			eventErr, detailedErr := volumeToMount.GenerateError("MapVolume.MarkVolumeAsMounted failed", markVolMountedErr)
-			return volumetypes.NewOperationContext(eventErr, detailedErr, migrated)
-		}
-
 		return volumetypes.NewOperationContext(nil, nil, migrated)
 	}
 
