@@ -1,0 +1,24 @@
+Add new watchers to PV controller tests
+
+From: Jan Safranek <jsafrane@redhat.com>
+
+Add fake Pod and Node watchers to the tests. It only reduces test noise:
+
+Failed to watch *v1.Pod: unhandled watch: testing.WatchActionImpl{ActionImpl:testing.ActionImpl{Namespace:"", Verb:"watch", Resource:schema.GroupVersionResource{Group:"", Version:"v1", Resource:"pods"}, Subresource:""}, WatchRestrictions:testing.WatchRestrictions{Labels:labels.internalSelector(nil), Fields:fields.andTerm{}, ResourceVersion:""}}
+---
+ .../volume/persistentvolume/pv_controller_test.go  |    2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/pkg/controller/volume/persistentvolume/pv_controller_test.go b/pkg/controller/volume/persistentvolume/pv_controller_test.go
+index 3dc26277710..3d47e96d460 100644
+--- a/pkg/controller/volume/persistentvolume/pv_controller_test.go
++++ b/pkg/controller/volume/persistentvolume/pv_controller_test.go
+@@ -305,6 +305,8 @@ func TestControllerSync(t *testing.T) {
+ 		fakeClaimWatch := watch.NewFake()
+ 		client.PrependWatchReactor("persistentvolumeclaims", core.DefaultWatchReactor(fakeClaimWatch, nil))
+ 		client.PrependWatchReactor("storageclasses", core.DefaultWatchReactor(watch.NewFake(), nil))
++		client.PrependWatchReactor("nodes", core.DefaultWatchReactor(watch.NewFake(), nil))
++		client.PrependWatchReactor("pods", core.DefaultWatchReactor(watch.NewFake(), nil))
+ 
+ 		informers := informers.NewSharedInformerFactory(client, controller.NoResyncPeriodFunc())
+ 		ctrl, err := newTestController(client, informers, true)

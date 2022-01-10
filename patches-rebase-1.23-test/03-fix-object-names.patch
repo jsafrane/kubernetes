@@ -1,0 +1,23 @@
+Fix PV name in unit test
+
+From: Jan Safranek <jsafrane@redhat.com>
+
+Test 5-5 should use PV with "5-5"i in the name. It makes log analysys
+much easier.
+---
+ .../volume/persistentvolume/pv_controller_test.go  |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/pkg/controller/volume/persistentvolume/pv_controller_test.go b/pkg/controller/volume/persistentvolume/pv_controller_test.go
+index 642038148fb..91f19d00671 100644
+--- a/pkg/controller/volume/persistentvolume/pv_controller_test.go
++++ b/pkg/controller/volume/persistentvolume/pv_controller_test.go
+@@ -138,7 +138,7 @@ func TestControllerSync(t *testing.T) {
+ 			// delete the corresponding volume from apiserver, and report latency metric
+ 			"5-5 - delete claim and delete volume report metric",
+ 			volumesWithAnnotation(pvutil.AnnDynamicallyProvisioned, "gcr.io/vendor-csi",
+-				newVolumeArray("volume5-6", "10Gi", "uid5-6", "claim5-6", v1.VolumeBound, v1.PersistentVolumeReclaimDelete, classExternal, pvutil.AnnBoundByController)),
++				newVolumeArray("volume5-6", "10Gi", "uid5-5", "claim5-5", v1.VolumeBound, v1.PersistentVolumeReclaimDelete, classExternal, pvutil.AnnBoundByController)),
+ 			novolumes,
+ 			claimWithAnnotation(pvutil.AnnStorageProvisioner, "gcr.io/vendor-csi",
+ 				newClaimArray("claim5-5", "uid5-5", "1Gi", "volume5-5", v1.ClaimBound, &classExternal, pvutil.AnnBoundByController, pvutil.AnnBindCompleted)),

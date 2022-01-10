@@ -1,0 +1,44 @@
+Deflake PV metrics unit test
+
+From: Jan Safranek <jsafrane@redhat.com>
+
+Test 5-7 tries to delete a PVC at the very same time when it detects that
+the PV controller started processing the PVC. The controller then sometimes
+can't update the PVC and generate an event for it that the test expects.
+
+From PV controller logs (not shown in CI):
+> I1221 14:36:34.548160  104481 pv_controller.go:815] updating PersistentVolumeClaim[default/claim5-7] status: set phase Lost failed: cannot update claim claim5-7: claim not found
+
+Typical error in CI:
+> FAIL: TestControllerSync (83.22s)
+> framework_test.go:202: Event "Warning ClaimLost" not emitted
+
+Therefore wait for the PVC to be fully processed before deleting the PVC to
+avoid races.
+---
+ .../volume/persistentvolume/pv_controller_test.go  |   12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/pkg/controller/volume/persistentvolume/pv_controller_test.go b/pkg/controller/volume/persistentvolume/pv_controller_test.go
+index 3d47e96d460..642038148fb 100644
+--- a/pkg/controller/volume/persistentvolume/pv_controller_test.go
++++ b/pkg/controller/volume/persistentvolume/pv_controller_test.go
+@@ -223,6 +223,18 @@ func TestControllerSync(t *testing.T) {
+ 				if err != nil {
+ 					return err
+ 				}
++
++				// Wait for the PVC to get fully processed. This avoids races between PV controller and DeleteClaimEvent
++				// below.
++				err = wait.Poll(10*time.Millisecond, wait.ForeverTestTimeout, func() (bool, error) {
++					obj := ctrl.claims.List()[0]
++					claim := obj.(*v1.PersistentVolumeClaim)
++					return claim.Status.Phase == v1.ClaimLost, nil
++				})
++				if err != nil {
++					return err
++				}
++
+ 				// trying to remove the claim as well
+ 				obj := ctrl.claims.List()[0]
+ 				claim := obj.(*v1.PersistentVolumeClaim)
