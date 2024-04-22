@@ -2315,9 +2315,12 @@ func TestSyncStates(t *testing.T) {
 			createMountPoint: true,
 			podInfos:         []podInfo{},
 			verifyFunc: func(rcInstance *reconciler, fakePlugin *volumetesting.FakeVolumePlugin) error {
-				mountedPods := rcInstance.actualStateOfWorld.GetMountedVolumes()
+				mountedPods := rcInstance.actualStateOfWorld.GetAllMountedVolumes()
 				if len(mountedPods) != 2 {
 					return fmt.Errorf("expected 2 pods to in asw got %d", len(mountedPods))
+				}
+				if len(rcInstance.actualStateOfWorld.GetMountedVolumes()) != 0 {
+					return fmt.Errorf("expected 0 pod to in asw got %d", len(mountedPods))
 				}
 				return nil
 			},
@@ -2339,7 +2342,7 @@ func TestSyncStates(t *testing.T) {
 			},
 			verifyFunc: func(rcInstance *reconciler, fakePlugin *volumetesting.FakeVolumePlugin) error {
 				// for pod that is deleted, volume is considered as mounted
-				mountedPods := rcInstance.actualStateOfWorld.GetMountedVolumes()
+				mountedPods := rcInstance.actualStateOfWorld.GetAllMountedVolumes()
 				if len(mountedPods) != 1 {
 					return fmt.Errorf("expected 1 pods to in asw got %d", len(mountedPods))
 				}
@@ -2383,7 +2386,7 @@ func TestSyncStates(t *testing.T) {
 			createMountPoint: false,
 			podInfos:         []podInfo{},
 			verifyFunc: func(rcInstance *reconciler, fakePlugin *volumetesting.FakeVolumePlugin) error {
-				mountedPods := rcInstance.actualStateOfWorld.GetMountedVolumes()
+				mountedPods := rcInstance.actualStateOfWorld.GetAllMountedVolumes()
 				if len(mountedPods) != 1 {
 					return fmt.Errorf("expected 1 pods to in asw got %d", len(mountedPods))
 				}
