@@ -153,9 +153,10 @@ type PersistentVolumeController struct {
 	NodeLister         corelisters.NodeLister
 	NodeListerSynced   cache.InformerSynced
 
-	kubeClient                clientset.Interface
-	eventBroadcaster          record.EventBroadcaster
-	eventRecorder             record.EventRecorder
+	kubeClient       clientset.Interface
+	eventBroadcaster record.EventBroadcaster
+	eventRecorder    record.EventRecorder
+	// TODO: add metricsPluginMgr
 	volumePluginMgr           vol.VolumePluginMgr
 	enableDynamicProvisioning bool
 	resyncPeriod              time.Duration

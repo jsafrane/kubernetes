@@ -94,9 +94,11 @@ func NewController(ctx context.Context, p ControllerParameters) (*PersistentVolu
 	}
 
 	// Prober is nil because PV is not aware of Flexvolume.
+	// TODO: filter volume plugins as in ProbeProvisionableRecyclableVolumePlugins
 	if err := controller.volumePluginMgr.InitPlugins(p.VolumePlugins, nil /* prober */, controller); err != nil {
 		return nil, fmt.Errorf("could not initialize volume plugins for PersistentVolume Controller: %w", err)
 	}
+	// TODO: create metricsVolumeMgr
 
 	p.VolumeInformer.Informer().AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
@@ -318,6 +320,7 @@ func (ctrl *PersistentVolumeController) Run(ctx context.Context) {
 	go wait.UntilWithContext(ctx, ctrl.volumeWorker, time.Second)
 	go wait.UntilWithContext(ctx, ctrl.claimWorker, time.Second)
 
+	// TODO: use metricsPluginMgr
 	metrics.Register(ctrl.volumes.store, ctrl.claims, &ctrl.volumePluginMgr)
 
 	<-ctx.Done()
